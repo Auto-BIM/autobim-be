@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from app.core.config import ModelSettings
-from app.jobs.supplement import SupplementError, apply_supplements
+from app.jobs.supplement import SupplementError, apply_supplements, replay_supplements
 from app.models.registry import build_models
 from app.recognition.pipeline import image_to_plan
 from app.schemas.jobs import SupplementRequest
@@ -111,4 +111,73 @@ def test_patched_or_resolved_elements_leave_review(fake_plan):
 def test_unknown_elements_rejected(fake_plan, body):
     with pytest.raises(SupplementError) as exc:
         apply_supplements(fake_plan, [_sup(**body)])
+    assert exc.value.code == "unknown_element"
+
+
+# --- remove -------------------------------------------------------------------------------
+
+
+def _removed(replay):
+    return [(r.id, r.element_kind.value, r.revision, r.cascade_from) for r in replay.removed]
+
+
+def test_remove_opening(fake_plan):
+    replay = replay_supplements(fake_plan, [_sup(remove=["o5"])])
+    walls, openings = _ids(replay.plan)
+    assert walls == _ids(fake_plan)[0]
+    assert openings == ["o1", "o2", "o3", "o4"]
+    assert _removed(replay) == [("o5", "opening", 1, None)]
+
+
+def test_remove_wall_cascades_to_its_openings(fake_plan):
+    replay = replay_supplements(fake_plan, [_sup(remove=["w3"])])
+    assert "w3" not in _ids(replay.plan)[0]
+    assert "o3" not in _ids(replay.plan)[1]
+    assert _removed(replay) == [("w3", "wall", 1, None), ("o3", "opening", 1, "w3")]
+    # o3's low-confidence review item goes with it
+    assert replay.plan.review_items == []
+
+
+def test_opening_listed_with_its_wall_counts_as_direct(fake_plan):
+    replay = replay_supplements(fake_plan, [_sup(remove=["o1", "w2"])])
+    assert _removed(replay) == [("w2", "wall", 1, None), ("o1", "opening", 1, None)]
+
+
+def test_removed_ids_are_never_reused(fake_plan):
+    sups = [
+        _sup(remove=["w5", "o4"]),  # w5 is the highest wall ID; o5 goes with it
+        _sup(
+            add_walls=[{"start": {"x": 9000, "y": 1000}, "end": {"x": 9000, "y": 6000}}],
+            add_openings=[{"type": "window", "wall_id": "w1", "position": 2000}],
+        ),
+        _sup(add_openings=[{"type": "door", "wall_id": "w6", "position": 1000}]),
+    ]
+    replay = replay_supplements(fake_plan, sups)
+    walls, openings = _ids(replay.plan)
+    assert walls == ["w1", "w2", "w3", "w4", "w6"]
+    assert openings == ["o1", "o2", "o3", "o6", "o7"]
+    assert [r.id for r in replay.removed] == ["w5", "o5", "o4"]
+
+
+def test_removed_elements_cannot_be_referenced_later(fake_plan):
+    for later in (
+        {"remove": ["w4"]},
+        {"walls": [{"id": "w4", "height": 3000}]},
+        {"openings": [{"id": "o2", "width": 800}]},  # removed with w4
+        {"add_openings": [{"type": "door", "wall_id": "w4", "position": 0}]},
+        {"resolved": ["o2"]},
+    ):
+        with pytest.raises(SupplementError) as exc:
+            replay_supplements(fake_plan, [_sup(remove=["w4"]), _sup(**later)])
+        assert exc.value.code == "unknown_element"
+
+
+def test_resolve_then_remove_later_is_fine(fake_plan):
+    plan = apply_supplements(fake_plan, [_sup(resolved=["o3"]), _sup(remove=["o3"])])
+    assert "o3" not in _ids(plan)[1]
+
+
+def test_remove_unknown_element(fake_plan):
+    with pytest.raises(SupplementError) as exc:
+        replay_supplements(fake_plan, [_sup(remove=["w99"])])
     assert exc.value.code == "unknown_element"

@@ -1,16 +1,18 @@
 """Apply user supplements (보충 입력) to a stored Plan — no model re-run.
 
 The base Plan (first recognition result) is kept untouched; every regeneration replays
-all supplements on it: rescale to the latest scale hint, then patches/additions in
-submission order. Existing element IDs never change; added elements get fresh IDs.
+all supplements on it: rescale to the latest scale hint, then patches/removals/additions
+in submission order. Existing element IDs never change; added elements get fresh IDs;
+removed IDs are never reused.
 """
 
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from app.core import defaults
-from app.schemas.jobs import NewOpening, NewWall, ScaleHint, SupplementRequest
+from app.schemas.jobs import NewOpening, NewWall, RemovedElement, ScaleHint, SupplementRequest
 from app.schemas.plan import (
     ElementKind,
     OpeningType,
@@ -119,15 +121,56 @@ def _new_opening(new: NewOpening, opening_id: str) -> dict:
     }
 
 
-def apply_supplements(base: Plan, supplements: list[SupplementRequest]) -> Plan:
+@dataclass(frozen=True)
+class Replay:
+    plan: Plan
+    removed: list[RemovedElement]
+
+
+def _remove(
+    ids: list[str],
+    walls: dict[str, dict],
+    openings: dict[str, dict],
+    revision: int,
+) -> list[RemovedElement]:
+    if unknown := [i for i in ids if i not in walls and i not in openings]:
+        raise SupplementError("unknown_element", f"cannot remove unknown elements {unknown}")
+    requested = set(ids)
+    removed = []
+    for wall_id in [i for i in ids if i in walls]:
+        del walls[wall_id]
+        removed.append(RemovedElement(id=wall_id, element_kind=ElementKind.wall, revision=revision))
+        for oid in [o for o, op in openings.items() if op["wall_id"] == wall_id]:
+            del openings[oid]
+            removed.append(
+                RemovedElement(
+                    id=oid,
+                    element_kind=ElementKind.opening,
+                    revision=revision,
+                    # an opening also listed explicitly counts as a direct removal
+                    cascade_from=None if oid in requested else wall_id,
+                )
+            )
+    for oid in [i for i in ids if i in openings]:
+        del openings[oid]
+        removed.append(RemovedElement(id=oid, element_kind=ElementKind.opening, revision=revision))
+    return removed
+
+
+def replay_supplements(base: Plan, supplements: list[SupplementRequest]) -> Replay:
+    """Replay supplements onto the base Plan. `supplements[i]` produces revision i + 1."""
     hint = latest_scale_hint(supplements)
     plan = rescale(base, hint) if hint is not None else base
     data = plan.model_dump(mode="json")
     walls = {w["id"]: w for w in data["walls"]}
     openings = {o["id"]: o for o in data["openings"]}
     resolved: set[str] = set()
+    removed: list[RemovedElement] = []
 
-    for sup in supplements:
+    def taken() -> set[str]:  # removed IDs stay taken forever
+        return set(walls) | set(openings) | {r.id for r in removed}
+
+    for revision, sup in enumerate(supplements, start=1):
         for patch in sup.walls:
             if patch.id not in walls:
                 raise SupplementError("unknown_element", f"wall {patch.id!r} not found")
@@ -142,23 +185,31 @@ def apply_supplements(base: Plan, supplements: list[SupplementRequest]) -> Plan:
                 patch.model_dump(mode="json", exclude={"id"}, exclude_none=True)
             )
             resolved.add(patch.id)
+        removed.extend(_remove(sup.remove, walls, openings, revision))
         for new in sup.add_walls:
-            wall_id = _next_id("w", set(walls) | set(openings))
+            wall_id = _next_id("w", taken())
             walls[wall_id] = _new_wall(new, wall_id)
         for new in sup.add_openings:
             if new.wall_id not in walls:
                 raise SupplementError("unknown_element", f"wall {new.wall_id!r} not found")
-            opening_id = _next_id("o", set(walls) | set(openings))
+            opening_id = _next_id("o", taken())
             openings[opening_id] = _new_opening(new, opening_id)
+        known = set(walls) | set(openings) | {"plan"}
+        if unknown := sorted(set(sup.resolved) - known):
+            raise SupplementError("unknown_element", f"cannot resolve unknown elements {unknown}")
         resolved.update(sup.resolved)
 
-    known = set(walls) | set(openings) | {"plan"}
-    if unknown := sorted(set().union(*(s.resolved for s in supplements)) - known):
-        raise SupplementError("unknown_element", f"cannot resolve unknown elements {unknown}")
+    gone = {r.id for r in removed}
     data["walls"] = list(walls.values())
     data["openings"] = list(openings.values())
-    data["review_items"] = [r for r in data["review_items"] if r["element_id"] not in resolved]
+    data["review_items"] = [
+        r for r in data["review_items"] if r["element_id"] not in resolved | gone
+    ]
     try:
-        return Plan.model_validate(data)
+        return Replay(plan=Plan.model_validate(data), removed=removed)
     except ValueError as exc:
         raise SupplementError("invalid_supplement", str(exc)) from exc
+
+
+def apply_supplements(base: Plan, supplements: list[SupplementRequest]) -> Plan:
+    return replay_supplements(base, supplements).plan

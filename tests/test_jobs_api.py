@@ -1,4 +1,7 @@
+import io
+
 import numpy as np
+import trimesh
 
 from app.models.base import WallMask
 from app.schemas.jobs import Job, JobStatus
@@ -87,6 +90,39 @@ def test_supplement_regenerates(client, png_bytes):
     plan = client.get(f"/api/jobs/{job_id}").json()["plan"]
     assert plan["scale"]["source"] == "building_width"
     assert {o["id"]: o["width"] for o in plan["openings"]}["o1"] == 1000
+
+
+def test_supplement_remove_reports_cascaded_openings(client, png_bytes):
+    job_id = _create(client, png_bytes)["id"]
+    res = client.post(f"/api/jobs/{job_id}/supplement", json={"remove": ["w4"]})
+    assert res.status_code == 202
+    # the 202 response already says which openings went with the wall
+    assert res.json()["removed"] == [
+        {"id": "w4", "element_kind": "wall", "revision": 1, "cascade_from": None},
+        {"id": "o2", "element_kind": "opening", "revision": 1, "cascade_from": "w4"},
+    ]
+    job = client.get(f"/api/jobs/{job_id}").json()
+    assert job["status"] == "succeeded"
+    assert "w4" not in [w["id"] for w in job["plan"]["walls"]]
+    assert "o2" not in [o["id"] for o in job["plan"]["openings"]]
+    glb = client.get(f"/api/jobs/{job_id}/files/glb").content
+    scene = trimesh.load(io.BytesIO(glb), file_type="glb")
+    assert "w4" not in scene.geometry and len(scene.geometry) == 4
+
+    # removals accumulate across supplements; removed IDs are not reused
+    body = {"remove": ["o5"], "add_walls": [{"start": {"x": 5000, "y": 1000}, "end": {"x": 5000, "y": 6000}}]}
+    job = client.post(f"/api/jobs/{job_id}/supplement", json=body).json()
+    assert [(r["id"], r["revision"]) for r in job["removed"]] == [("w4", 1), ("o2", 1), ("o5", 2)]
+    walls = [w["id"] for w in client.get(f"/api/jobs/{job_id}").json()["plan"]["walls"]]
+    assert walls == ["w1", "w2", "w3", "w5", "w6"]
+
+
+def test_supplement_remove_unknown_is_400(client, png_bytes):
+    job_id = _create(client, png_bytes)["id"]
+    res = client.post(f"/api/jobs/{job_id}/supplement", json={"remove": ["o99"]})
+    assert res.status_code == 400 and res.json()["detail"]["code"] == "unknown_element"
+    job = client.get(f"/api/jobs/{job_id}").json()
+    assert job["revision"] == 0 and job["removed"] == []
 
 
 def test_supplement_rejects_unknown_element(client, png_bytes):

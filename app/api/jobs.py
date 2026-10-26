@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 
 from app.jobs.runner import run_job
 from app.jobs.store import JobRecord, JobStore
-from app.jobs.supplement import SupplementError, apply_supplements
+from app.jobs.supplement import SupplementError, replay_supplements
 from app.schemas.jobs import ErrorResponse, FileKind, Job, JobInput, JobStatus, SupplementRequest
 from app.schemas.plan import SourceType
 
@@ -103,10 +103,10 @@ def supplement_job(
     if record.job.plan is None or record.base_plan is None:
         raise _error(409, "no_plan", "job has no plan to supplement (it never succeeded)")
     try:  # dry run so a bad supplement is rejected now instead of failing the job later
-        apply_supplements(record.base_plan, [*record.supplements, body])
+        replay = replay_supplements(record.base_plan, [*record.supplements, body])
     except SupplementError as exc:
         raise _error(400, exc.code, exc.message) from exc
-    job = _store(request).add_supplement(job_id, body)
+    job = _store(request).add_supplement(job_id, body, removed=replay.removed)
     _schedule(request, background, job_id)
     return job
 

@@ -74,9 +74,15 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
     "json": "/api/jobs/3f2c…/files/json",
     "glb": "/api/jobs/3f2c…/files/glb",
     "dxf": "/api/jobs/3f2c…/files/dxf"
-  }
+  },
+  "removed": [
+    { "id": "w4", "element_kind": "wall", "revision": 2, "cascade_from": null },
+    { "id": "o2", "element_kind": "opening", "revision": 2, "cascade_from": "w4" }
+  ]
 }
 ```
+
+- `removed`: `revision`까지의 보충 입력으로 지워진 요소 전체(누적). 벽을 지울 때 함께 지워진 개구부는 `cascade_from`에 그 벽 ID가 들어간다. 보충 입력의 202 응답에 이미 반영돼 있어서, 재생성이 끝나기 전에도 함께 지워진 ID를 알 수 있다.
 
 ## Plan (`schema_version` "1.0")
 
@@ -115,7 +121,7 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
 
 검증 규칙: ID는 벽·개구부를 통틀어 유일해야 한다. `opening.wall_id`는 존재하는 벽이어야 한다. `review_items[].element_id`는 존재하는 요소이거나 `"plan"`이어야 한다(`dimension`은 예외). 모르는 필드가 있으면 거부한다.
 
-**ID 규칙**: 인식 결과에는 `w1…`, `o1…`이 순서대로 붙는다. 한 작업 안에서는 보충 입력 전후로 **기존 ID가 절대 바뀌지 않는다**. 새로 추가한 요소만 새 ID(기존 최대 번호 + 1)를 받는다.
+**ID 규칙**: 인식 결과에는 `w1…`, `o1…`이 순서대로 붙는다. 한 작업 안에서는 보충 입력 전후로 **기존 ID가 절대 바뀌지 않는다**. 새로 추가한 요소만 새 ID(지금까지 쓴 최대 번호 + 1)를 받는다. **삭제된 ID는 다시 쓰지 않는다.**
 
 ## SupplementRequest
 
@@ -124,6 +130,7 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
   "scale": { "building_width_mm": 16000 },
   "walls": [ { "id": "w4", "thickness": 150 } ],
   "openings": [ { "id": "o1", "width": 1000 } ],
+  "remove": [ "w5", "o4" ],
   "add_walls": [ { "start": {"x": 1000, "y": 3500}, "end": {"x": 5000, "y": 3500} } ],
   "add_openings": [ { "type": "door", "wall_id": "w4", "position": 4000 } ],
   "resolved": [ "o3" ]
@@ -131,7 +138,7 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
 ```
 
 - **모델을 다시 돌리지 않는다.** 저장된 기준 Plan(첫 인식 결과)에 보충 입력을 적용한 뒤 glb/dxf/json만 다시 만든다.
-- 보충 입력은 **누적**된다. 다시 만들 때마다 기준 Plan에서 시작해 ① 가장 최근 `scale`로 축척을 바꾸고 ② 지금까지 받은 보충 입력을 순서대로 적용한다. 각 보충 입력 안의 적용 순서는 `walls` → `openings` → `add_walls` → `add_openings` → `resolved`.
+- 보충 입력은 **누적**된다. 다시 만들 때마다 기준 Plan에서 시작해 ① 가장 최근 `scale`로 축척을 바꾸고 ② 지금까지 받은 보충 입력을 순서대로 적용한다. 각 보충 입력 안의 적용 순서는 `walls` → `openings` → `remove` → `add_walls` → `add_openings` → `resolved`.
 - `scale`에는 다음 중 **정확히 하나**만 넣는다.
   - `mm_per_px`
   - `building_width_mm`: 가장 바깥 벽 중심선 사이의 x 길이
@@ -139,7 +146,11 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
 - 축척을 바꾸면 픽셀에서 나온 길이(좌표, 개구부 위치·폭, 벽 두께)만 비율대로 다시 계산한다. 높이와, 패치로 직접 넣은 값은 바뀌지 않는다.
 - `add_walls`와 `add_openings`에서 생략한 치수는 [ASSUMPTIONS.md](ASSUMPTIONS.md) 기본값을 쓴다. 벽 두께는 `kind`에 따른다(기본값은 `interior`). `add_openings[].wall_id`는 이미 있는 벽이어야 한다. 같은 요청에서 추가하는 벽은 아직 ID가 없어서 참조할 수 없다.
 - `resolved`에 넣은 요소와 패치로 수정한 요소는 확인 필요 목록에서 빠진다. `resolved`에는 `"plan"`도 넣을 수 있다. 축척을 정하면 축척 관련 `plan` 항목은 자동으로 빠진다.
-- 요소 삭제는 아직 지원하지 않는다.
+- `remove`: 지울 벽·개구부 ID 목록.
+  - 벽을 지우면 그 벽에 붙은 개구부도 **함께 지워진다**. 함께 지워진 ID는 응답 `Job.removed`에 `cascade_from`과 함께 나온다. `remove`에 직접 넣은 개구부는 그 벽과 같이 지워져도 `cascade_from = null`이다.
+  - 지운 요소의 확인 필요 항목도 같이 빠진다.
+  - 없는 ID나 이미 지운 ID를 지우려 하면 400 `unknown_element`. 이후 보충 입력에서 지운 요소를 patch, 참조, `resolved`해도 마찬가지다.
+  - 지운 ID는 다시 쓰지 않는다. `w5`를 지운 뒤 벽을 추가하면 `w6`이 된다.
 
 ## 출력 파일
 

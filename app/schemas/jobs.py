@@ -10,7 +10,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.plan import OpeningType, Plan, Point2D, SourceType, WallKind
+from app.schemas.plan import ElementKind, OpeningType, Plan, Point2D, SourceType, WallKind
 
 
 class _Model(BaseModel):
@@ -41,6 +41,16 @@ class JobError(_Model):
     message: str
 
 
+class RemovedElement(_Model):
+    id: str
+    element_kind: ElementKind = Field(description="wall or opening")
+    revision: int = Field(description="Revision whose supplement removed it")
+    cascade_from: str | None = Field(
+        default=None,
+        description="Wall whose removal took this opening with it; null if removed directly",
+    )
+
+
 class Job(_Model):
     id: str
     status: JobStatus
@@ -62,6 +72,13 @@ class Job(_Model):
     error: JobError | None = Field(default=None, description="Why the latest revision failed")
     files: dict[FileKind, str] = Field(
         default_factory=dict, description="Download URLs for `result_revision`'s outputs"
+    )
+    removed: list[RemovedElement] = Field(
+        default_factory=list,
+        description=(
+            "Elements removed by supplements up to `revision`, including openings removed "
+            "together with their wall. Removed IDs are never reused"
+        ),
     )
 
 
@@ -134,13 +151,17 @@ class NewOpening(_Model):
 class SupplementRequest(_Model):
     """User-supplied corrections, applied to the stored Plan without re-running the models.
 
-    Order: scale -> walls -> openings -> add_walls -> add_openings -> resolved.
-    Existing element IDs never change; added elements get new IDs.
+    Order: scale -> walls -> openings -> remove -> add_walls -> add_openings -> resolved.
+    Existing element IDs never change; added elements get new IDs; removed IDs are never reused.
     """
 
     scale: ScaleHint | None = None
     walls: list[WallPatch] = Field(default_factory=list)
     openings: list[OpeningPatch] = Field(default_factory=list)
+    remove: list[str] = Field(
+        default_factory=list,
+        description="Wall/opening IDs to delete. Removing a wall also removes its openings",
+    )
     add_walls: list[NewWall] = Field(default_factory=list)
     add_openings: list[NewOpening] = Field(default_factory=list)
     resolved: list[str] = Field(

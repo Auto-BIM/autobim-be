@@ -14,7 +14,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from app.schemas.jobs import FileKind, Job, JobInput, JobStatus, SupplementRequest
+from app.schemas.jobs import (
+    FileKind,
+    Job,
+    JobInput,
+    JobStatus,
+    RemovedElement,
+    SupplementRequest,
+)
 from app.schemas.plan import Plan
 
 
@@ -90,13 +97,16 @@ class JobStore:
             )
             return record.job
 
-    def add_supplement(self, job_id: str, supplement: SupplementRequest) -> Job:
+    def add_supplement(
+        self, job_id: str, supplement: SupplementRequest, removed: list[RemovedElement]
+    ) -> Job:
         with self._lock:
             record = self._records[job_id]
             record.supplements.append(supplement)
             record.job = record.job.model_copy(
                 update={
                     "revision": record.job.revision + 1,
+                    "removed": removed,
                     "status": JobStatus.queued,
                     "error": None,
                     "updated_at": _now(),
