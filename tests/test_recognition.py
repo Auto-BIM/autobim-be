@@ -3,8 +3,8 @@ import pytest
 
 from app.core.config import ModelSettings
 from app.models.registry import build_models
-from app.recognition.pipeline import RecognitionError, image_to_plan
-from app.schemas.jobs import ScaleHint, WallReference
+from app.recognition.pipeline import image_to_plan
+from app.schemas.jobs import ScaleHint
 from app.schemas.plan import ReviewReason, ScaleSource, WallKind
 
 IMG = np.zeros((8, 8, 3), np.uint8)
@@ -52,19 +52,6 @@ def test_scale_fallback_to_assumed_wall_thickness():
     assert plan.scale.estimated
     assert plan.scale.mm_per_px == pytest.approx(10.0)  # 200 mm / 20 px
     assert any(r.reason == ReviewReason.scale_estimated for r in plan.review_items)
-
-
-def test_scale_hints():
-    plan = _plan(models={"dimension_reader": "none"}, scale_hint=ScaleHint(building_width_mm=16000))
-    assert plan.scale.source == ScaleSource.building_width
-    assert plan.scale.mm_per_px == pytest.approx(20.0)
-    assert not any(r.reason == ReviewReason.scale_estimated for r in plan.review_items)
-
-    plan = _plan(scale_hint=ScaleHint(reference=WallReference(wall_id="w1", length_mm=4000)))
-    assert plan.walls[0].length == pytest.approx(4000)
-
-    with pytest.raises(RecognitionError):
-        _plan(scale_hint=ScaleHint(reference=WallReference(wall_id="w99", length_mm=1)))
 
 
 def test_scale_hint_requires_exactly_one():

@@ -10,8 +10,7 @@ from fastapi.responses import FileResponse
 
 from app.jobs.runner import run_job
 from app.jobs.store import JobRecord, JobStore
-from app.jobs.supplement import apply_supplements
-from app.recognition.pipeline import RecognitionError
+from app.jobs.supplement import SupplementError, apply_supplements
 from app.schemas.jobs import ErrorResponse, FileKind, Job, JobInput, JobStatus, SupplementRequest
 from app.schemas.plan import SourceType
 
@@ -101,15 +100,12 @@ def supplement_job(
     record = _record(request, job_id)
     if record.job.status in (JobStatus.queued, JobStatus.running):
         raise _error(409, "job_busy", f"job is {record.job.status.value}; retry when it finishes")
-    plan = record.job.plan
-    if plan is not None:
-        wall_ids = {w.id for w in plan.walls}
-        if body.scale and body.scale.reference and body.scale.reference.wall_id not in wall_ids:
-            raise _error(400, "unknown_element", f"wall {body.scale.reference.wall_id!r} not found")
-        try:
-            apply_supplements(plan, [body])
-        except RecognitionError as exc:
-            raise _error(400, exc.code, exc.message) from exc
+    if record.job.plan is None or record.base_plan is None:
+        raise _error(409, "no_plan", "job has no plan to supplement (it never succeeded)")
+    try:  # dry run so a bad supplement is rejected now instead of failing the job later
+        apply_supplements(record.base_plan, [*record.supplements, body])
+    except SupplementError as exc:
+        raise _error(400, exc.code, exc.message) from exc
     job = _store(request).add_supplement(job_id, body)
     _schedule(request, background, job_id)
     return job
@@ -130,7 +126,7 @@ def supplement_job(
 )
 def get_job_file(request: Request, job_id: str, kind: FileKind) -> FileResponse:
     record = _record(request, job_id)
-    path = record.outputs.get(kind)
-    if record.job.status != JobStatus.succeeded or path is None:
-        raise _error(409, "not_ready", f"job is {record.job.status.value}; files are not ready")
+    path = record.outputs.get(kind)  # last successful revision, even while regenerating
+    if path is None:
+        raise _error(409, "not_ready", f"job is {record.job.status.value}; no files yet")
     return FileResponse(path, media_type=MEDIA_TYPES[kind], filename=f"{job_id}.{kind.value}")

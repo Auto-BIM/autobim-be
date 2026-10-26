@@ -11,7 +11,6 @@ from app.models.base import DimensionText, OpeningDetection
 from app.models.registry import Models
 from app.preprocess.image import preprocess
 from app.recognition.walls import PixelWall, extract_walls
-from app.schemas.jobs import ScaleHint
 from app.schemas.plan import (
     ElementKind,
     Opening,
@@ -38,10 +37,6 @@ class RecognitionError(Exception):
         self.message = message
 
 
-def _wall_ids(walls: list[PixelWall]) -> list[str]:
-    return [f"w{i + 1}" for i in range(len(walls))]
-
-
 def _classify(walls: list[PixelWall]) -> list[WallKind]:
     """Walls lying on the bounding box of all centerlines are exterior."""
     xs = [w.center for w in walls if not w.horizontal]
@@ -60,29 +55,8 @@ def _resolve_scale(
     walls: list[PixelWall],
     kinds: list[WallKind],
     dimensions: list[DimensionText],
-    hint: ScaleHint | None,
     review: list[ReviewItem],
 ) -> Scale:
-    if hint is not None:
-        if hint.mm_per_px is not None:
-            return Scale(source=ScaleSource.user, estimated=False, mm_per_px=hint.mm_per_px)
-        if hint.building_width_mm is not None:
-            xs = [w.center for w in walls if not w.horizontal]
-            if len(xs) < 2 or max(xs) == min(xs):
-                raise RecognitionError("scale_unresolvable", "no vertical walls to measure width")
-            mm_per_px = hint.building_width_mm / (max(xs) - min(xs))
-            return Scale(source=ScaleSource.building_width, estimated=False, mm_per_px=mm_per_px)
-        assert hint.reference is not None
-        ids = _wall_ids(walls)
-        if hint.reference.wall_id not in ids:
-            raise RecognitionError(
-                "unknown_element", f"reference wall {hint.reference.wall_id!r} not found"
-            )
-        w = walls[ids.index(hint.reference.wall_id)]
-        return Scale(
-            source=ScaleSource.user, estimated=False, mm_per_px=hint.reference.length_mm / w.length
-        )
-
     ratios = [d.value_mm / d.span_px for d in dimensions if d.value_mm and d.span_px > 0]
     if ratios:
         mm_per_px = statistics.median(ratios)
@@ -188,7 +162,6 @@ def image_to_plan(
     *,
     filename: str | None = None,
     review_threshold: float = 0.5,
-    scale_hint: ScaleHint | None = None,
 ) -> Plan:
     image = preprocess(image)
     wall_mask = models.wall_segmenter.segment(image)
@@ -198,10 +171,10 @@ def image_to_plan(
     walls = extract_walls(wall_mask.mask)
     if not walls:
         raise RecognitionError("no_walls", "no walls found in the wall mask")
-    ids = _wall_ids(walls)
+    ids = [f"w{i + 1}" for i in range(len(walls))]
     kinds = _classify(walls)
     review: list[ReviewItem] = []
-    scale = _resolve_scale(walls, kinds, dimensions, scale_hint, review)
+    scale = _resolve_scale(walls, kinds, dimensions, review)
     s = scale.mm_per_px
     assert s is not None
     height_px = wall_mask.mask.shape[0]

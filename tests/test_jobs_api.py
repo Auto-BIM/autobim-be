@@ -14,9 +14,10 @@ def test_health(client):
 def test_create_and_get_job(client, png_bytes):
     created = _create(client, png_bytes)
     assert created["status"] == "queued" and created["revision"] == 0
+    assert created["result_revision"] is None and created["plan"] is None
     # TestClient runs background tasks before returning, so the job is done here.
     job = Job.model_validate(client.get(f"/api/jobs/{created['id']}").json())
-    assert job.status == JobStatus.succeeded
+    assert job.status == JobStatus.succeeded and job.result_revision == 0
     assert job.plan is not None and len(job.plan.walls) == 5
     assert set(job.files) == {"dxf", "glb", "json"}
     assert job.files["glb"] == f"/api/jobs/{job.id}/files/glb"
@@ -50,8 +51,12 @@ def test_dxf_input_fails_as_not_implemented(client):
     job = client.get(f"/api/jobs/{res.json()['id']}").json()
     assert job["input"]["type"] == "dxf"
     assert job["status"] == "failed" and job["error"]["code"] == "not_implemented"
+    assert job["plan"] is None and job["result_revision"] is None
     res = client.get(f"/api/jobs/{job['id']}/files/glb")
     assert res.status_code == 409 and res.json()["detail"]["code"] == "not_ready"
+    # nothing to patch: supplements to a job that never produced a plan are refused
+    res = client.post(f"/api/jobs/{job['id']}/supplement", json={"resolved": []})
+    assert res.status_code == 409 and res.json()["detail"]["code"] == "no_plan"
 
 
 def test_supplement_regenerates(client, png_bytes):
@@ -68,7 +73,7 @@ def test_supplement_regenerates(client, png_bytes):
     assert res.status_code == 202 and res.json()["revision"] == 1
 
     job = client.get(f"/api/jobs/{job_id}").json()
-    assert job["status"] == "succeeded" and job["revision"] == 1
+    assert job["status"] == "succeeded" and job["revision"] == job["result_revision"] == 1
     plan = job["plan"]
     assert plan["scale"]["source"] == "building_width"
     assert {w["id"]: w["thickness"] for w in plan["walls"]}["w4"] == 150
@@ -85,6 +90,47 @@ def test_supplement_rejects_unknown_element(client, png_bytes):
     res = client.post(f"/api/jobs/{job_id}/supplement", json={"walls": [{"id": "w99", "height": 1}]})
     assert res.status_code == 400 and res.json()["detail"]["code"] == "unknown_element"
     assert client.get(f"/api/jobs/{job_id}").json()["revision"] == 0
+
+
+def test_supplement_does_not_rerun_models(client, png_bytes, monkeypatch):
+    job_id = _create(client, png_bytes)["id"]
+    before = client.get(f"/api/jobs/{job_id}").json()["plan"]
+    models = client.app.state.models
+
+    def boom(image):
+        raise AssertionError("models must not run for a supplement")
+
+    monkeypatch.setattr(models.wall_segmenter, "segment", boom)
+    monkeypatch.setattr(models.opening_detector, "detect", boom)
+    body = {"add_openings": [{"type": "window", "wall_id": "w2", "position": 6000}]}
+    client.post(f"/api/jobs/{job_id}/supplement", json=body)
+    after = client.get(f"/api/jobs/{job_id}").json()
+    assert after["status"] == "succeeded", after["error"]
+    assert [w["id"] for w in after["plan"]["walls"]] == [w["id"] for w in before["walls"]]
+    assert [o["id"] for o in after["plan"]["openings"]] == [o["id"] for o in before["openings"]] + ["o6"]
+
+
+def test_last_success_kept_while_regenerating_and_after_failure(client, png_bytes, monkeypatch):
+    job_id = _create(client, png_bytes)["id"]
+    glb0 = client.get(f"/api/jobs/{job_id}/files/glb").content
+
+    import app.jobs.runner as runner
+
+    def broken(plan, out_dir):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(runner, "write_outputs", broken)
+    res = client.post(f"/api/jobs/{job_id}/supplement", json={"walls": [{"id": "w1", "height": 3000}]})
+    # the 202 body is the queued state: revision 1 requested, revision 0 still shown
+    queued = res.json()
+    assert queued["status"] == "queued" and queued["revision"] == 1
+    assert queued["result_revision"] == 0 and queued["plan"] is not None and queued["files"]
+
+    job = client.get(f"/api/jobs/{job_id}").json()
+    assert job["status"] == "failed" and job["error"]["code"] == "internal_error"
+    assert job["revision"] == 1 and job["result_revision"] == 0
+    assert {w["id"]: w["height"] for w in job["plan"]["walls"]}["w1"] == 2400
+    assert client.get(f"/api/jobs/{job_id}/files/glb").content == glb0
 
 
 def test_supplement_rejects_busy_job(client, png_bytes):

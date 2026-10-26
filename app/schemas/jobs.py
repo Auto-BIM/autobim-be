@@ -10,7 +10,7 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.schemas.plan import OpeningType, Plan, SourceType, WallKind
+from app.schemas.plan import OpeningType, Plan, Point2D, SourceType, WallKind
 
 
 class _Model(BaseModel):
@@ -44,14 +44,24 @@ class JobError(_Model):
 class Job(_Model):
     id: str
     status: JobStatus
-    revision: int = Field(description="0 on creation; +1 for each accepted supplement")
+    revision: int = Field(
+        description="Requested revision: 0 on creation, +1 for each accepted supplement"
+    )
+    result_revision: int | None = Field(
+        default=None,
+        description=(
+            "Revision that `plan` and `files` belong to: the last successful one. "
+            "Lags `revision` while regenerating or after a failed regeneration; null until "
+            "the first success"
+        ),
+    )
     created_at: datetime
     updated_at: datetime
     input: JobInput
-    plan: Plan | None = Field(default=None, description="Present once the job has succeeded")
-    error: JobError | None = None
+    plan: Plan | None = Field(default=None, description="Plan of `result_revision`")
+    error: JobError | None = Field(default=None, description="Why the latest revision failed")
     files: dict[FileKind, str] = Field(
-        default_factory=dict, description="Download URLs, present once the job has succeeded"
+        default_factory=dict, description="Download URLs for `result_revision`'s outputs"
     )
 
 
@@ -70,7 +80,7 @@ class ScaleHint(_Model):
         description="Building width (x extent) between the outermost wall centerlines, mm",
     )
     reference: WallReference | None = Field(
-        default=None, description="Known centerline length of one wall"
+        default=None, description="Known centerline length of one recognized wall"
     )
 
     @model_validator(mode="after")
@@ -98,12 +108,41 @@ class OpeningPatch(_Model):
     sill_height: float | None = Field(default=None, ge=0)
 
 
+class NewWall(_Model):
+    """A wall the recognizer missed. Omitted sizes fall back to docs/ASSUMPTIONS.md."""
+
+    start: Point2D
+    end: Point2D
+    thickness: float | None = Field(
+        default=None, gt=0, description="Default: exterior/interior wall thickness by `kind`"
+    )
+    height: float | None = Field(default=None, gt=0, description="Default: wall height")
+    kind: WallKind = WallKind.interior
+
+
+class NewOpening(_Model):
+    """A door/window the recognizer missed. Omitted sizes fall back to docs/ASSUMPTIONS.md."""
+
+    type: OpeningType
+    wall_id: str = Field(description="An existing wall (not one added in the same request)")
+    position: float
+    width: float | None = Field(default=None, gt=0)
+    height: float | None = Field(default=None, gt=0)
+    sill_height: float | None = Field(default=None, ge=0)
+
+
 class SupplementRequest(_Model):
-    """User-supplied corrections. Applied in order: scale -> walls -> openings -> resolved."""
+    """User-supplied corrections, applied to the stored Plan without re-running the models.
+
+    Order: scale -> walls -> openings -> add_walls -> add_openings -> resolved.
+    Existing element IDs never change; added elements get new IDs.
+    """
 
     scale: ScaleHint | None = None
     walls: list[WallPatch] = Field(default_factory=list)
     openings: list[OpeningPatch] = Field(default_factory=list)
+    add_walls: list[NewWall] = Field(default_factory=list)
+    add_openings: list[NewOpening] = Field(default_factory=list)
     resolved: list[str] = Field(
         default_factory=list, description="Element IDs whose review items the user has confirmed"
     )

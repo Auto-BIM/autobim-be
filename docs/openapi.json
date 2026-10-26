@@ -96,13 +96,14 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Why the latest revision failed"
           },
           "files": {
             "additionalProperties": {
               "type": "string"
             },
-            "description": "Download URLs, present once the job has succeeded",
+            "description": "Download URLs for `result_revision`'s outputs",
             "propertyNames": {
               "$ref": "#/components/schemas/FileKind"
             },
@@ -125,10 +126,22 @@
                 "type": "null"
               }
             ],
-            "description": "Present once the job has succeeded"
+            "description": "Plan of `result_revision`"
+          },
+          "result_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Revision that `plan` and `files` belong to: the last successful one. Lags `revision` while regenerating or after a failed regeneration; null until the first success",
+            "title": "Result Revision"
           },
           "revision": {
-            "description": "0 on creation; +1 for each accepted supplement",
+            "description": "Requested revision: 0 on creation, +1 for each accepted supplement",
             "title": "Revision",
             "type": "integer"
           },
@@ -209,6 +222,115 @@
         ],
         "title": "JobStatus",
         "type": "string"
+      },
+      "NewOpening": {
+        "additionalProperties": false,
+        "description": "A door/window the recognizer missed. Omitted sizes fall back to docs/ASSUMPTIONS.md.",
+        "properties": {
+          "height": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "position": {
+            "title": "Position",
+            "type": "number"
+          },
+          "sill_height": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sill Height"
+          },
+          "type": {
+            "$ref": "#/components/schemas/OpeningType"
+          },
+          "wall_id": {
+            "description": "An existing wall (not one added in the same request)",
+            "title": "Wall Id",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "type",
+          "wall_id",
+          "position"
+        ],
+        "title": "NewOpening",
+        "type": "object"
+      },
+      "NewWall": {
+        "additionalProperties": false,
+        "description": "A wall the recognizer missed. Omitted sizes fall back to docs/ASSUMPTIONS.md.",
+        "properties": {
+          "end": {
+            "$ref": "#/components/schemas/Point2D"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default: wall height",
+            "title": "Height"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WallKind",
+            "default": "interior"
+          },
+          "start": {
+            "$ref": "#/components/schemas/Point2D"
+          },
+          "thickness": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default: exterior/interior wall thickness by `kind`",
+            "title": "Thickness"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "NewWall",
+        "type": "object"
       },
       "Opening": {
         "additionalProperties": false,
@@ -599,7 +721,7 @@
                 "type": "null"
               }
             ],
-            "description": "Known centerline length of one wall"
+            "description": "Known centerline length of one recognized wall"
           }
         },
         "title": "ScaleHint",
@@ -626,8 +748,22 @@
       },
       "SupplementRequest": {
         "additionalProperties": false,
-        "description": "User-supplied corrections. Applied in order: scale -> walls -> openings -> resolved.",
+        "description": "User-supplied corrections, applied to the stored Plan without re-running the models.\n\nOrder: scale -> walls -> openings -> add_walls -> add_openings -> resolved.\nExisting element IDs never change; added elements get new IDs.",
         "properties": {
+          "add_openings": {
+            "items": {
+              "$ref": "#/components/schemas/NewOpening"
+            },
+            "title": "Add Openings",
+            "type": "array"
+          },
+          "add_walls": {
+            "items": {
+              "$ref": "#/components/schemas/NewWall"
+            },
+            "title": "Add Walls",
+            "type": "array"
+          },
           "openings": {
             "items": {
               "$ref": "#/components/schemas/OpeningPatch"

@@ -1,7 +1,8 @@
 """Plan -> per-wall solids (mm, Plan axes with z up).
 
 Each wall is a box around its centerline (half thickness each side); door/window
-intervals are cut out, leaving the lintel above and the sill below.
+intervals are cut out, leaving the lintel above doors, and the lintel above plus the
+sill below windows.
 Junction handling (L/T extend/trim, design.md §5) is next-tasks #1 — walls currently
 stop at their centerline endpoints, so corners both overlap (inner square) and leave a
 missing half-thickness square at the outer corner.
