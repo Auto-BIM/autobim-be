@@ -1,0 +1,21 @@
+# Auto-BIM backend settings.
+# Override the file with AUTOBIM_CONFIG=/path/to/settings.yaml,
+# and individual model choices with AUTOBIM_WALL_SEGMENTER / AUTOBIM_OPENING_DETECTOR / AUTOBIM_DIMENSION_READER.
+
+models:
+  # fake | cubicasa
+  wall_segmenter: fake
+  # fake | cubicasa
+  opening_detector: fake
+  # fake | none
+  dimension_reader: fake
+  cubicasa:
+    weights_path: null
+
+storage:
+  # relative paths are resolved against backend/. Override with AUTOBIM_DATA_DIR.
+  data_dir: data/jobs
+
+recognition:
+  # detections below this confidence become review items
+  review_confidence_threshold: 0.5
