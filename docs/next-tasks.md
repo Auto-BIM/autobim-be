@@ -2,7 +2,7 @@
 
 병렬 worktree 작업용 이슈 목록. 우선순위 순서다.
 
-**공통 규칙** ([CLAUDE.md](../CLAUDE.md) 참고)
+**공통 규칙** ([AGENTS.md](../AGENTS.md) 참고)
 - 각 이슈는 "건드리는 폴더" 안에서만 작업한다.
 - 계약(`app/schemas/`, `app/models/base.py`, API 경로·형식, `docs/openapi.json`)을 바꿔야 하면 그 부분만 **별도 계약 PR**로 먼저 올린다.
 - 모든 테스트는 Fake 모델로 돌아야 한다. 샘플 도면, 데이터셋, 가중치는 커밋하지 않고 테스트 입력은 코드로 만든다.
