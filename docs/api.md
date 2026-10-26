@@ -1,6 +1,6 @@
 # API 요약
 
-전체 스펙: [openapi.json](openapi.json) — `backend/scripts/export_openapi.py`로 생성하며,
+전체 스펙: [openapi.json](openapi.json) — `scripts/export_openapi.py`로 생성하며,
 `tests/test_contract.py`가 실제 앱과 일치하는지 검사한다. **경로·요청/응답 형식은 계약이며
 계약 담당 PR에서만 바꾼다.** 서버 실행 중에는 `/docs`(Swagger UI)에서도 볼 수 있다.
 
@@ -72,7 +72,7 @@ succeeded | failed ──(supplement)──▶ queued (revision+1)
 
 ## Plan (`schema_version` "1.0")
 
-단위는 mm이고 축은 CAD 기준(y 위쪽)이다. 정의: `backend/app/schemas/plan.py`. 좌표 규약은 [design.md](design.md) §2를 따른다.
+단위는 mm이고 축은 CAD 기준(y 위쪽)이다. 정의: `app/schemas/plan.py`. 좌표 규약은 [design.md](design.md) §2를 따른다.
 
 ```json
 {

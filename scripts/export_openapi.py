@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.main import create_app  # noqa: E402
 
-OUT = Path(__file__).resolve().parents[2] / "docs" / "openapi.json"
+OUT = Path(__file__).resolve().parents[1] / "docs" / "openapi.json"
 
 
 def render() -> str:

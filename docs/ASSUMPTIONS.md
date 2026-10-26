@@ -1,7 +1,7 @@
 # ASSUMPTIONS — 기본값
 
 도면에서 값을 얻지 못했을 때 쓰는 기본값. 단위는 모두 mm.
-이 표가 **기준(source of truth)** 이며, 코드 상수 `backend/app/core/defaults.py`와
+이 표가 **기준(source of truth)** 이며, 코드 상수 `app/core/defaults.py`와
 일치하는지 `tests/test_assumptions.py`가 검사한다. 값을 바꾸려면 별도 합의가 필요하다.
 
 | key | value | 설명 |

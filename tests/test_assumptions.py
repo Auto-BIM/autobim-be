@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.core import defaults
 
-DOC = Path(__file__).resolve().parents[2] / "docs" / "ASSUMPTIONS.md"
+DOC = Path(__file__).resolve().parents[1] / "docs" / "ASSUMPTIONS.md"
 
 
 def _doc_values() -> dict[str, float]:

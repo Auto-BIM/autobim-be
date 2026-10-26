@@ -1,4 +1,4 @@
-"""Settings loaded from backend/config/settings.yaml with env overrides."""
+"""Settings loaded from config/settings.yaml with env overrides."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
-BACKEND_DIR = Path(__file__).resolve().parents[2]
-DEFAULT_CONFIG_PATH = BACKEND_DIR / "config" / "settings.yaml"
+ROOT_DIR = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG_PATH = ROOT_DIR / "config" / "settings.yaml"
 
 
 class CubiCasaSettings(BaseModel):
@@ -40,7 +40,7 @@ class Settings(BaseModel):
     @property
     def data_dir(self) -> Path:
         path = Path(self.storage.data_dir)
-        return path if path.is_absolute() else BACKEND_DIR / path
+        return path if path.is_absolute() else ROOT_DIR / path
 
 
 _ENV_MODEL_OVERRIDES = {

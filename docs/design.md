@@ -22,7 +22,7 @@ Plan (mm 단위 중간 표현, JSON)  ── 확인 필요 요소 → 사용자 
 
 ## 2. Plan (중간 표현)
 
-정의: `backend/app/schemas/plan.py` (Pydantic, `schema_version` 포함). 구성 요소:
+정의: `app/schemas/plan.py` (Pydantic, `schema_version` 포함). 구성 요소:
 
 - **walls**: 벽 목록. 중심선 시작점·끝점, 두께, 높이, 종류(외벽/내벽/미상), 신뢰도
 - **openings**: 개구부 목록. 종류(문/창), 붙은 벽 ID, 벽 위 위치, 폭, 높이, 창대 높이, 신뢰도
@@ -43,7 +43,7 @@ Plan (mm 단위 중간 표현, JSON)  ── 확인 필요 요소 → 사용자 
 ## 3. 이미지 경로
 
 1. **전처리** (`app/preprocess/`): 디코딩, RGB 변환. 이후 기울기 보정·잡음 제거·해상도 정규화 추가 예정.
-2. **인식 모델** (`app/models/`): 아래 세 인터페이스. 구현은 설정 파일(`backend/config/settings.yaml`)로 고른다.
+2. **인식 모델** (`app/models/`): 아래 세 인터페이스. 구현은 설정 파일(`config/settings.yaml`)로 고른다.
    - `WallSegmenter` → 벽 마스크
    - `OpeningDetector` → 문·창 박스 + 신뢰도
    - `DimensionReader` → 치수 텍스트 + 위치(치수선 양 끝 픽셀 좌표)
@@ -80,7 +80,7 @@ Plan (mm 단위 중간 표현, JSON)  ── 확인 필요 요소 → 사용자 
 - `POST /api/jobs/{id}/supplement` 보충 입력 → 재생성 (`revision` 증가)
 - `GET /api/jobs/{id}/files/{dxf|glb|json}` 결과 파일
 
-저장: 인메모리 + 로컬 파일(`AUTOBIM_DATA_DIR`, 기본 `backend/data/jobs`).
+저장: 인메모리 + 로컬 파일(`AUTOBIM_DATA_DIR`, 기본 `data/jobs`).
 
 ## 8. 기본값
 
@@ -92,15 +92,15 @@ Plan (mm 단위 중간 표현, JSON)  ── 확인 필요 요소 → 사용자 
 
 | 폴더 | 내용 | 비고 |
 |---|---|---|
-| `backend/app/schemas/` | Plan, API 요청/응답 모델 | **계약 — 계약 담당 PR에서만 수정** |
-| `backend/app/models/base.py` | 모델 인터페이스 | **계약** |
-| `backend/app/api/` | FastAPI 라우터 | 경로·형식은 계약 |
-| `backend/app/jobs/` | 작업 저장소·실행기 | |
-| `backend/app/models/` | Fake / CubiCasa 어댑터 / 레지스트리 | |
-| `backend/app/preprocess/` | 이미지 전처리 | |
-| `backend/app/recognition/` | 후처리(마스크→Plan) | |
-| `backend/app/dxf_input/` | DXF 입력 경로 | |
-| `backend/app/geometry/` | Plan → 3D 기하 | |
-| `backend/app/export/` | glb / dxf / json 출력 | |
-| `backend/eval/` | 평가 하네스 | 예정 |
+| `app/schemas/` | Plan, API 요청/응답 모델 | **계약 — 계약 담당 PR에서만 수정** |
+| `app/models/base.py` | 모델 인터페이스 | **계약** |
+| `app/api/` | FastAPI 라우터 | 경로·형식은 계약 |
+| `app/jobs/` | 작업 저장소·실행기 | |
+| `app/models/` | Fake / CubiCasa 어댑터 / 레지스트리 | |
+| `app/preprocess/` | 이미지 전처리 | |
+| `app/recognition/` | 후처리(마스크→Plan) | |
+| `app/dxf_input/` | DXF 입력 경로 | |
+| `app/geometry/` | Plan → 3D 기하 | |
+| `app/export/` | glb / dxf / json 출력 | |
+| `eval/` | 평가 하네스 | 예정 |
 | `deploy/` | 배포 설정 | 예정 |

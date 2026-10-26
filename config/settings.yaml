@@ -13,7 +13,7 @@ models:
     weights_path: null
 
 storage:
-  # relative paths are resolved against backend/. Override with AUTOBIM_DATA_DIR.
+  # relative paths are resolved against the repo root. Override with AUTOBIM_DATA_DIR.
   data_dir: data/jobs
 
 recognition:
