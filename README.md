@@ -6,7 +6,7 @@ Auto-BIM 백엔드. 2D 평면도(이미지 또는 DXF)를 중간 표현 **Plan**
 - API: [docs/api.md](docs/api.md) · [docs/openapi.json](docs/openapi.json)
 - 기본값: [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md)
 - 다음 작업: [docs/next-tasks.md](docs/next-tasks.md)
-- 에이전트/기여 규칙: [CLAUDE.md](CLAUDE.md) (= [AGENTS.md](AGENTS.md))
+- 에이전트/기여 규칙: [CLAUDE.md](CLAUDE.md) ([AGENTS.md](AGENTS.md)는 CLAUDE.md를 참조)
 
 > 현재 상태: 인식 모델은 **Fake**(고정 결과)만 동작한다. CubiCasa 어댑터와 DXF 입력은 자리만 있다.
 > 벽 접합부 처리가 아직 없어서 glb/dxf 모서리가 맞지 않는다(next-tasks #1).
@@ -73,4 +73,4 @@ ruff check .
 python scripts/export_openapi.py --check   # API 계약 스냅샷 확인
 ```
 
-CI(GitHub Actions)는 PR마다 lint, test, OpenAPI 스냅샷, `CLAUDE.md`/`AGENTS.md` 동일성, docker build와 smoke test를 돌린다.
+CI(GitHub Actions)는 PR마다 lint, test, OpenAPI 스냅샷, `AGENTS.md` → `CLAUDE.md` 참조, docker build와 smoke test를 돌린다.

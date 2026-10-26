@@ -1,6 +1,6 @@
 # Auto-BIM 백엔드 — 에이전트 작업 지침
 
-> `CLAUDE.md`와 `AGENTS.md`는 **내용이 같아야 한다**(CI가 `cmp`로 검사). 한쪽을 고치면 다른 쪽에 그대로 복사한다.
+> 에이전트 지침의 단일 원본이다. `AGENTS.md`는 이 파일을 `@CLAUDE.md`로 가리키기만 한다. 지침은 여기에만 쓴다.
 
 ## 무엇을 하는 레포인가
 
@@ -62,5 +62,5 @@ docker compose up --build                  # 컨테이너 실행
 3. **`docs/ASSUMPTIONS.md`의 기본값은 바꾸지 않는다.** 코드 상수(`app/core/defaults.py`)와 일치하는지 `tests/test_assumptions.py`가 검사한다.
 4. **데이터셋, 모델 가중치, 샘플 도면(이미지/.dxf/.dwg/.pdf)은 커밋하지 않는다.** 테스트 입력은 코드로 생성한다(PIL 이미지, `ezdxf.new()`). 출력은 `tmp_path`에 쓴다.
 5. **모든 테스트는 Fake 모델로 돌아야 한다.** 실제 모델이 필요한 테스트는 기본 실행에서 빠지게 한다(예: 마커와 환경변수로 opt-in).
-6. 기존 테스트는 계속 통과해야 한다. PR마다 CI가 lint, test, OpenAPI 스냅샷, CLAUDE/AGENTS 동일성, docker build를 확인한다.
+6. 기존 테스트는 계속 통과해야 한다. PR마다 CI가 lint, test, OpenAPI 스냅샷, `AGENTS.md`의 `@CLAUDE.md` 참조, docker build를 확인한다.
 7. 담당 폴더 밖은 되도록 건드리지 않는다. 병렬 작업 영역은 [docs/next-tasks.md](docs/next-tasks.md)의 "건드리는 폴더"를 따른다.

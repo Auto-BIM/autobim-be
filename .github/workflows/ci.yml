@@ -34,8 +34,8 @@ jobs:
         run: pytest -q
       - name: OpenAPI snapshot is current
         run: python scripts/export_openapi.py --check
-      - name: CLAUDE.md and AGENTS.md are identical
-        run: cmp CLAUDE.md AGENTS.md
+      - name: AGENTS.md points at CLAUDE.md
+        run: grep -qx '@CLAUDE.md' AGENTS.md
 
   docker:
     runs-on: ubuntu-latest
