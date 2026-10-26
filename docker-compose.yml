@@ -1,0 +1,16 @@
+services:
+  api:
+    build: .
+    image: autobim-be:local
+    ports:
+      - "8000:8000"
+    environment:
+      # fake | cubicasa — see config/settings.yaml
+      AUTOBIM_WALL_SEGMENTER: ${AUTOBIM_WALL_SEGMENTER:-fake}
+      AUTOBIM_OPENING_DETECTOR: ${AUTOBIM_OPENING_DETECTOR:-fake}
+      AUTOBIM_DIMENSION_READER: ${AUTOBIM_DIMENSION_READER:-fake}
+    volumes:
+      - jobs:/data/jobs
+
+volumes:
+  jobs:
