@@ -30,7 +30,7 @@ def test_no_supplements_is_identity(fake_plan):
     assert apply_supplements(fake_plan, []) == fake_plan
 
 
-def test_building_width_rescales_coordinates_only(estimated_plan):
+def test_building_width_rescales_pixel_derived_lengths(estimated_plan):
     plan = apply_supplements(estimated_plan, [_sup(scale={"building_width_mm": 16000})])
     assert plan.scale.source == ScaleSource.building_width and not plan.scale.estimated
     assert plan.scale.mm_per_px == pytest.approx(20.0)

@@ -1,3 +1,6 @@
+import numpy as np
+
+from app.models.base import WallMask
 from app.schemas.jobs import Job, JobStatus
 
 
@@ -46,17 +49,18 @@ def test_unsupported_upload(client):
     assert res.status_code == 415 and res.json()["detail"]["code"] == "unsupported_media_type"
 
 
-def test_dxf_input_fails_as_not_implemented(client):
-    res = client.post("/api/jobs", files={"file": ("plan.dxf", b"0\nEOF\n", "application/dxf")})
-    job = client.get(f"/api/jobs/{res.json()['id']}").json()
-    assert job["input"]["type"] == "dxf"
-    assert job["status"] == "failed" and job["error"]["code"] == "not_implemented"
-    assert job["plan"] is None and job["result_revision"] is None
+def test_first_revision_failure_has_no_plan(client, png_bytes, monkeypatch):
+    empty = WallMask(mask=np.zeros((10, 10), dtype=bool))
+    monkeypatch.setattr(client.app.state.models.wall_segmenter, "segment", lambda image: empty)
+    job = client.get(f"/api/jobs/{_create(client, png_bytes)['id']}").json()
+    assert job["status"] == "failed" and job["error"]["code"] == "no_walls"
+    assert job["plan"] is None and job["result_revision"] is None and job["files"] == {}
     res = client.get(f"/api/jobs/{job['id']}/files/glb")
     assert res.status_code == 409 and res.json()["detail"]["code"] == "not_ready"
     # nothing to patch: supplements to a job that never produced a plan are refused
     res = client.post(f"/api/jobs/{job['id']}/supplement", json={"resolved": []})
     assert res.status_code == 409 and res.json()["detail"]["code"] == "no_plan"
+    assert client.get(f"/api/jobs/{job['id']}").json()["revision"] == 0
 
 
 def test_supplement_regenerates(client, png_bytes):

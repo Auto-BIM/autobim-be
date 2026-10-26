@@ -37,7 +37,7 @@
 
 **배경**: `.dxf` 업로드는 지금 `failed`(`not_implemented`)로 끝난다. 설계([design.md](design.md) §4)는 ezdxf로 읽고 레이어·블록 이름으로 분류하며, 이중선 벽을 병합하는 것이다.
 
-**건드리는 폴더**: `app/dxf_input/`, `tests/test_dxf_input.py`(신규). 필요하면 `app/jobs/runner.py`의 DXF 분기만 수정한다.
+**건드리는 폴더**: `app/dxf_input/`, `tests/test_dxf_input.py`. 필요하면 `app/jobs/runner.py`의 DXF 분기만 수정한다.
 
 **할 일**
 - 레이어·블록 이름 규칙으로 벽·문·창을 분류한다. 규칙 표는 설정 가능하게 하고 한국어·영문 레이어명을 모두 다룬다(예: `A-WALL`, `벽`, `WALL`).
@@ -50,7 +50,7 @@
 - [ ] 이중선 직사각형 방 + 내벽 1개 + 문 블록 2개 + 창 블록 1개 → 벽 수, 중심선 좌표, 두께, 개구부 `wall_id`와 `position`이 기대값과 같다(±1mm).
 - [ ] `$INSUNITS`가 m 또는 cm인 도면도 mm로 맞게 환산한다.
 - [ ] 분류할 수 없는 레이어는 무시하고, 단선 벽은 확인 필요 요소를 만든다.
-- [ ] API 통합 테스트: `.dxf` 업로드 → `succeeded`, glb/dxf/json을 받을 수 있다. `test_dxf_input_fails_as_not_implemented`는 이 동작에 맞게 바꾼다.
+- [ ] API 통합 테스트: `.dxf` 업로드 → `succeeded`, glb/dxf/json을 받을 수 있다. `tests/test_dxf_input.py`의 `not_implemented` 테스트를 이 동작으로 바꾼다(`tests/test_jobs_api.py`는 #3 담당이라 건드리지 않는다).
 
 ---
 
