@@ -3,7 +3,8 @@
 Each wall is a box around its centerline (half thickness each side); door/window
 intervals are cut out, leaving the lintel above and the sill below.
 Junction handling (L/T extend/trim, design.md §5) is next-tasks #1 — walls currently
-meet at their centerline endpoints and overlap at corners.
+stop at their centerline endpoints, so corners both overlap (inner square) and leave a
+missing half-thickness square at the outer corner.
 """
 
 from __future__ import annotations
