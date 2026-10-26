@@ -1,4 +1,4 @@
-"""DXF input path (next-tasks #2). Until implemented, DXF jobs fail as not_implemented."""
+"""DXF input path (issue #3). Until implemented, DXF jobs fail as not_implemented."""
 
 
 def test_dxf_upload_is_routed_to_dxf_path(client):

@@ -2,7 +2,7 @@
 
 Minimal implementation for the end-to-end path: finds horizontal/vertical bands of
 wall pixels and snaps their ends onto crossing walls' centerlines. Diagonal walls,
-gaps at openings and noisy masks are out of scope here (next-tasks #4).
+gaps at openings and noisy masks are out of scope here (issue #5).
 """
 
 from __future__ import annotations

@@ -15,7 +15,7 @@
 | GET | `/health` | 200 | | `{"status": "ok"}` |
 
 입력 파일 종류는 확장자로 판별한다. `.dxf`이면 DXF 경로이고, png/jpg/jpeg/bmp/tif/tiff/webp(또는 `image/*`)이면 이미지 경로다.
-DXF 경로는 아직 구현되지 않아 작업이 `failed`(`not_implemented`)로 끝난다(next-tasks #2).
+DXF 경로는 아직 구현되지 않아 작업이 `failed`(`not_implemented`)로 끝난다(이슈 #3).
 
 ## 작업 상태와 리비전
 

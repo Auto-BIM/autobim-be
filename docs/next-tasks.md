@@ -1,6 +1,7 @@
-# 다음 작업 (GitHub 이슈 초안)
+# 다음 작업 (GitHub 이슈)
 
-병렬 worktree 작업용 이슈 목록. 우선순위 순서다.
+병렬 worktree 작업용 이슈 목록. 우선순위 순서다. 제목의 번호는 **GitHub 이슈 번호**다(#1은 초기 셋업 PR이라 이슈는 #2부터).
+각 이슈의 진행 상황과 논의는 GitHub 이슈에서 한다. 이 문서는 범위와 완료 조건의 원본이다.
 
 **공통 규칙** ([AGENTS.md](../AGENTS.md) 참고)
 - 각 이슈는 "건드리는 폴더" 안에서만 작업한다.
@@ -10,7 +11,9 @@
 
 ---
 
-## #1 Plan → 3D/.dxf 기하 생성 완성 (접합부, 개구부)
+## #2 Plan → 3D/.dxf 기하 생성 완성 (접합부, 개구부)
+
+GitHub: [#2](https://github.com/Auto-BIM/autobim-be/issues/2)
 
 **배경**: 지금은 벽이 중심선 끝점에서 그냥 끝난다. 그래서 L자 모서리 안쪽은 두 벽이 겹치고, 바깥 모서리는 두께 절반 크기 정사각형(외벽 200mm면 100×100mm)이 비어 있다. 설계([design.md](design.md) §5)는 한쪽 벽을 두께 절반만큼 늘리거나 줄여서 겹침도 빈 칸도 없게 하는 것이다.
 
@@ -33,7 +36,9 @@
 
 ---
 
-## #2 DXF 입력 경로
+## #3 DXF 입력 경로
+
+GitHub: [#3](https://github.com/Auto-BIM/autobim-be/issues/3)
 
 **배경**: `.dxf` 업로드는 지금 `failed`(`not_implemented`)로 끝난다. 설계([design.md](design.md) §4)는 ezdxf로 읽고 레이어·블록 이름으로 분류하며, 이중선 벽을 병합하는 것이다.
 
@@ -50,11 +55,13 @@
 - [ ] 이중선 직사각형 방 + 내벽 1개 + 문 블록 2개 + 창 블록 1개 → 벽 수, 중심선 좌표, 두께, 개구부 `wall_id`와 `position`이 기대값과 같다(±1mm).
 - [ ] `$INSUNITS`가 m 또는 cm인 도면도 mm로 맞게 환산한다.
 - [ ] 분류할 수 없는 레이어는 무시하고, 단선 벽은 확인 필요 요소를 만든다.
-- [ ] API 통합 테스트: `.dxf` 업로드 → `succeeded`, glb/dxf/json을 받을 수 있다. `tests/test_dxf_input.py`의 `not_implemented` 테스트를 이 동작으로 바꾼다(`tests/test_jobs_api.py`는 #3 담당이라 건드리지 않는다).
+- [ ] API 통합 테스트: `.dxf` 업로드 → `succeeded`, glb/dxf/json을 받을 수 있다. `tests/test_dxf_input.py`의 `not_implemented` 테스트를 이 동작으로 바꾼다(`tests/test_jobs_api.py`는 #4 담당이라 건드리지 않는다).
 
 ---
 
-## #3 Jobs API 저장소 · 보충 입력 재생성 고도화
+## #4 Jobs API 저장소 · 보충 입력 재생성 고도화
+
+GitHub: [#4](https://github.com/Auto-BIM/autobim-be/issues/4)
 
 **배경**: 지금 작업 저장은 인메모리 + 로컬 파일이라 재시작하면 사라진다. 실행도 FastAPI `BackgroundTasks`(같은 프로세스)에서 한다. 보충 입력의 기본 의미(모델 재실행 없음, ID 불변, 마지막 성공 결과 유지, Plan 없는 작업은 409)는 확정됐고 테스트가 있다.
 
@@ -77,7 +84,9 @@
 
 ---
 
-## #4 모델 어댑터 (CubiCasa 베이스라인) + 전처리
+## #5 모델 어댑터 (CubiCasa 베이스라인) + 전처리
+
+GitHub: [#5](https://github.com/Auto-BIM/autobim-be/issues/5)
 
 **배경**: `app/models/cubicasa.py`는 자리만 있다(`NotImplementedError`). 후처리(`app/recognition/walls.py`)는 축에 평행하고 끊김 없는 Fake 마스크만 다룬다.
 
@@ -100,7 +109,9 @@
 
 ---
 
-## #5 평가 하네스 (AI Hub COCO → 정답 마스크, IoU)
+## #6 평가 하네스 (AI Hub COCO → 정답 마스크, IoU)
+
+GitHub: [#6](https://github.com/Auto-BIM/autobim-be/issues/6)
 
 **배경**: 모델과 후처리 품질을 수치로 비교할 기준이 없다.
 
@@ -120,7 +131,9 @@
 
 ---
 
-## #6 배포
+## #7 배포
+
+GitHub: [#7](https://github.com/Auto-BIM/autobim-be/issues/7)
 
 **배경**: Dockerfile, docker-compose, CI의 docker build/smoke는 있다. 실제 배포 대상과 설정은 아직 없다.
 
@@ -135,5 +148,5 @@
 **완료 조건 (테스트)**
 - [ ] main 머지 시 이미지가 빌드·push되고, PR에서는 push 없이 build만 한다.
 - [ ] 배포 이미지에서 `/health` 200, Fake 설정으로 `POST /api/jobs` → glb 다운로드까지 smoke test가 CI에서 통과한다.
-- [ ] 컨테이너가 non-root로 실행되고 작업 데이터가 볼륨에 남는다(재시작 후 파일 유지, #3 영속 저장소와 연동).
+- [ ] 컨테이너가 non-root로 실행되고 작업 데이터가 볼륨에 남는다(재시작 후 파일 유지, #4 영속 저장소와 연동).
 - [ ] `deploy/README.md`에 배포·롤백 절차를 적는다.

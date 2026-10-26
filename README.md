@@ -9,7 +9,7 @@ Auto-BIM 백엔드. 2D 평면도(이미지 또는 DXF)를 중간 표현 **Plan**
 - 에이전트/기여 규칙: [AGENTS.md](AGENTS.md) ([CLAUDE.md](CLAUDE.md)는 AGENTS.md를 불러옴)
 
 > 현재 상태: 인식 모델은 **Fake**(고정 결과)만 동작한다. CubiCasa 어댑터와 DXF 입력은 자리만 있다.
-> 벽 접합부 처리가 아직 없어서 glb/dxf 모서리가 맞지 않는다(next-tasks #1).
+> 벽 접합부 처리가 아직 없어서 glb/dxf 모서리가 맞지 않는다(이슈 #2).
 
 ## 로컬 실행
 

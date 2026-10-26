@@ -17,6 +17,6 @@ def load_image(data: bytes) -> np.ndarray:
 def preprocess(image: np.ndarray) -> np.ndarray:
     """Normalise an image for the recognition models. Currently a pass-through.
 
-    Planned (next-tasks #4): deskew, denoise, binarise, resolution normalisation.
+    Planned (issue #5): deskew, denoise, binarise, resolution normalisation.
     """
     return image

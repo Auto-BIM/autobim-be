@@ -3,7 +3,7 @@
 Layout: <data_dir>/<job_id>/input.<ext>, <data_dir>/<job_id>/r<revision>/{plan.json,model.glb,model.dxf}
 Earlier revisions' files stay on disk so the last success remains downloadable while
 a new revision regenerates.
-Not shared across processes and lost on restart (next-tasks #3 replaces this).
+Not shared across processes and lost on restart (issue #4 replaces this).
 """
 
 from __future__ import annotations

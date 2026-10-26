@@ -1,6 +1,6 @@
 """CubiCasa5k baseline adapter — placeholder.
 
-Real model loading and inference land in next-tasks #4. Kept import-light on purpose
+Real model loading and inference land in issue #5. Kept import-light on purpose
 (no torch import here) so the default fake configuration has no heavy dependencies.
 """
 
@@ -10,7 +10,7 @@ import numpy as np
 
 from app.models.base import OpeningDetection, OpeningDetector, WallMask, WallSegmenter
 
-_TODO = "CubiCasa adapter is not implemented yet (see docs/next-tasks.md #4)"
+_TODO = "CubiCasa adapter is not implemented yet (see issue #5)"
 
 
 class CubiCasaWallSegmenter(WallSegmenter):
