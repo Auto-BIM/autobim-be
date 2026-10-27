@@ -55,7 +55,7 @@ docker compose up --build                  # 컨테이너 실행
 
 ## 규칙
 
-1. **main에 직접 커밋하지 않는다.** 브랜치에서 작업하고 PR을 올린다. 머지는 사람이 한다.
+1. **main·develop에 직접 커밋하지 않는다.** 작업 브랜치는 `develop`에서 만들고 PR도 `develop`으로 올린다. `main`은 `develop`에서 릴리스할 때만 머지한다. 머지는 사람이 한다.
 2. **Plan 스키마와 API는 계약 담당 PR에서만 수정한다.** 대상은 `app/schemas/`, `app/models/base.py`, `app/api/`의 경로·요청/응답 형식, `docs/openapi.json`이다.
    - 기능 PR에서 `tests/test_contract.py`가 실패하면 계약을 건드린 것이다. 되돌리거나 계약 PR로 분리한다.
    - 계약 PR에서는 `SCHEMA_VERSION`을 올리고, `docs/openapi.json`을 다시 만들고, `docs/api.md`를 함께 고친다.
