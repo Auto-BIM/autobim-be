@@ -1,0 +1,1317 @@
+{
+  "components": {
+    "schemas": {
+      "Body_create_job_api_jobs_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "description": "Floor plan image (png/jpg/...) or .dxf",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_create_job_api_jobs_post",
+        "type": "object"
+      },
+      "ElementKind": {
+        "enum": [
+          "wall",
+          "opening",
+          "dimension",
+          "plan"
+        ],
+        "title": "ElementKind",
+        "type": "string"
+      },
+      "ErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "FileKind": {
+        "enum": [
+          "dxf",
+          "glb",
+          "json"
+        ],
+        "title": "FileKind",
+        "type": "string"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Job": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobError"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the latest revision failed"
+          },
+          "files": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Download URLs for `result_revision`'s outputs",
+            "propertyNames": {
+              "$ref": "#/components/schemas/FileKind"
+            },
+            "title": "Files",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "input": {
+            "$ref": "#/components/schemas/JobInput"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Plan"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Plan of `result_revision`"
+          },
+          "removed": {
+            "description": "Elements removed by supplements up to `revision`, including openings removed together with their wall. Removed IDs are never reused",
+            "items": {
+              "$ref": "#/components/schemas/RemovedElement"
+            },
+            "title": "Removed",
+            "type": "array"
+          },
+          "result_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Revision that `plan` and `files` belong to: the last successful one. Lags `revision` while regenerating or after a failed regeneration; null until the first success",
+            "title": "Result Revision"
+          },
+          "revision": {
+            "description": "Requested revision: 0 on creation, +1 for each accepted supplement",
+            "title": "Revision",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "revision",
+          "created_at",
+          "updated_at",
+          "input"
+        ],
+        "title": "Job",
+        "type": "object"
+      },
+      "JobError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "JobError",
+        "type": "object"
+      },
+      "JobInput": {
+        "additionalProperties": false,
+        "properties": {
+          "content_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Type"
+          },
+          "filename": {
+            "title": "Filename",
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/SourceType"
+          }
+        },
+        "required": [
+          "filename",
+          "type"
+        ],
+        "title": "JobInput",
+        "type": "object"
+      },
+      "JobStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "NewOpening": {
+        "additionalProperties": false,
+        "description": "A door/window the recognizer missed. Omitted sizes fall back to docs/ASSUMPTIONS.md.",
+        "properties": {
+          "height": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "position": {
+            "title": "Position",
+            "type": "number"
+          },
+          "sill_height": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sill Height"
+          },
+          "type": {
+            "$ref": "#/components/schemas/OpeningType"
+          },
+          "wall_id": {
+            "description": "An existing wall (not one added in the same request)",
+            "title": "Wall Id",
+            "type": "string"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "type",
+          "wall_id",
+          "position"
+        ],
+        "title": "NewOpening",
+        "type": "object"
+      },
+      "NewWall": {
+        "additionalProperties": false,
+        "description": "A wall the recognizer missed. Omitted sizes fall back to docs/ASSUMPTIONS.md.",
+        "properties": {
+          "end": {
+            "$ref": "#/components/schemas/Point2D"
+          },
+          "height": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default: wall height",
+            "title": "Height"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WallKind",
+            "default": "interior"
+          },
+          "start": {
+            "$ref": "#/components/schemas/Point2D"
+          },
+          "thickness": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Default: exterior/interior wall thickness by `kind`",
+            "title": "Thickness"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ],
+        "title": "NewWall",
+        "type": "object"
+      },
+      "Opening": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "height": {
+            "description": "mm",
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "number"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "position": {
+            "description": "mm from wall start to opening centre, along the centerline",
+            "title": "Position",
+            "type": "number"
+          },
+          "sill_height": {
+            "default": 0.0,
+            "description": "mm from floor to opening bottom",
+            "minimum": 0.0,
+            "title": "Sill Height",
+            "type": "number"
+          },
+          "type": {
+            "$ref": "#/components/schemas/OpeningType"
+          },
+          "wall_id": {
+            "description": "ID of the wall this opening is cut into",
+            "title": "Wall Id",
+            "type": "string"
+          },
+          "width": {
+            "description": "mm, along the wall",
+            "exclusiveMinimum": 0.0,
+            "title": "Width",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "wall_id",
+          "position",
+          "width",
+          "height"
+        ],
+        "title": "Opening",
+        "type": "object"
+      },
+      "OpeningPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "sill_height": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sill Height"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OpeningType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "wall_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wall Id"
+          },
+          "width": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "OpeningPatch",
+        "type": "object"
+      },
+      "OpeningType": {
+        "enum": [
+          "door",
+          "window"
+        ],
+        "title": "OpeningType",
+        "type": "string"
+      },
+      "Plan": {
+        "additionalProperties": false,
+        "properties": {
+          "openings": {
+            "items": {
+              "$ref": "#/components/schemas/Opening"
+            },
+            "title": "Openings",
+            "type": "array"
+          },
+          "review_items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewItem"
+            },
+            "title": "Review Items",
+            "type": "array"
+          },
+          "scale": {
+            "$ref": "#/components/schemas/Scale"
+          },
+          "schema_version": {
+            "const": "1.0",
+            "default": "1.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PlanSource"
+          },
+          "units": {
+            "const": "mm",
+            "default": "mm",
+            "title": "Units",
+            "type": "string"
+          },
+          "walls": {
+            "items": {
+              "$ref": "#/components/schemas/Wall"
+            },
+            "title": "Walls",
+            "type": "array"
+          }
+        },
+        "required": [
+          "source",
+          "scale"
+        ],
+        "title": "Plan",
+        "type": "object"
+      },
+      "PlanSource": {
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filename"
+          },
+          "height_px": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height Px"
+          },
+          "type": {
+            "$ref": "#/components/schemas/SourceType"
+          },
+          "width_px": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Width Px"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "PlanSource",
+        "type": "object"
+      },
+      "Point2D": {
+        "additionalProperties": false,
+        "properties": {
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          }
+        },
+        "required": [
+          "x",
+          "y"
+        ],
+        "title": "Point2D",
+        "type": "object"
+      },
+      "RemovedElement": {
+        "additionalProperties": false,
+        "properties": {
+          "cascade_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wall whose removal took this opening with it; null if removed directly",
+            "title": "Cascade From"
+          },
+          "element_kind": {
+            "$ref": "#/components/schemas/ElementKind",
+            "description": "wall or opening"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "revision": {
+            "description": "Revision whose supplement removed it",
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "element_kind",
+          "revision"
+        ],
+        "title": "RemovedElement",
+        "type": "object"
+      },
+      "ReviewItem": {
+        "additionalProperties": false,
+        "description": "An element the user should confirm (확인 필요 요소).",
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "element_id": {
+            "description": "Wall/opening ID, or 'plan' for plan-wide issues",
+            "title": "Element Id",
+            "type": "string"
+          },
+          "element_kind": {
+            "$ref": "#/components/schemas/ElementKind"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReviewReason"
+          }
+        },
+        "required": [
+          "element_id",
+          "element_kind",
+          "reason",
+          "confidence"
+        ],
+        "title": "ReviewItem",
+        "type": "object"
+      },
+      "ReviewReason": {
+        "enum": [
+          "low_confidence",
+          "scale_estimated",
+          "default_value_applied",
+          "unattached_opening",
+          "dimension_conflict",
+          "other"
+        ],
+        "title": "ReviewReason",
+        "type": "string"
+      },
+      "Scale": {
+        "additionalProperties": false,
+        "description": "How pixel measurements were converted to mm (크기 추정 여부).",
+        "properties": {
+          "estimated": {
+            "description": "True when the scale is a guess, not a measurement",
+            "title": "Estimated",
+            "type": "boolean"
+          },
+          "mm_per_px": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None for DXF input",
+            "title": "Mm Per Px"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ScaleSource"
+          }
+        },
+        "required": [
+          "source",
+          "estimated"
+        ],
+        "title": "Scale",
+        "type": "object"
+      },
+      "ScaleHint": {
+        "additionalProperties": false,
+        "description": "Exactly one way to fix the plan's scale.",
+        "properties": {
+          "building_width_mm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Building width (x extent) between the outermost wall centerlines, mm",
+            "title": "Building Width Mm"
+          },
+          "mm_per_px": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mm Per Px"
+          },
+          "reference": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WallReference"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Known centerline length of one recognized wall"
+          }
+        },
+        "title": "ScaleHint",
+        "type": "object"
+      },
+      "ScaleSource": {
+        "enum": [
+          "dimension",
+          "building_width",
+          "assumed_wall_thickness",
+          "user",
+          "source_units"
+        ],
+        "title": "ScaleSource",
+        "type": "string"
+      },
+      "SourceType": {
+        "enum": [
+          "image",
+          "dxf"
+        ],
+        "title": "SourceType",
+        "type": "string"
+      },
+      "SupplementRequest": {
+        "additionalProperties": false,
+        "description": "User-supplied corrections, applied to the stored Plan without re-running the models.\n\nOrder: scale -> walls -> openings -> remove -> add_walls -> add_openings -> resolved.\nExisting element IDs never change; added elements get new IDs; removed IDs are never reused.",
+        "properties": {
+          "add_openings": {
+            "items": {
+              "$ref": "#/components/schemas/NewOpening"
+            },
+            "title": "Add Openings",
+            "type": "array"
+          },
+          "add_walls": {
+            "items": {
+              "$ref": "#/components/schemas/NewWall"
+            },
+            "title": "Add Walls",
+            "type": "array"
+          },
+          "openings": {
+            "items": {
+              "$ref": "#/components/schemas/OpeningPatch"
+            },
+            "title": "Openings",
+            "type": "array"
+          },
+          "remove": {
+            "description": "Wall/opening IDs to delete. Removing a wall also removes its openings",
+            "items": {
+              "type": "string"
+            },
+            "title": "Remove",
+            "type": "array"
+          },
+          "resolved": {
+            "description": "Element IDs whose review items the user has confirmed",
+            "items": {
+              "type": "string"
+            },
+            "title": "Resolved",
+            "type": "array"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScaleHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "walls": {
+            "items": {
+              "$ref": "#/components/schemas/WallPatch"
+            },
+            "title": "Walls",
+            "type": "array"
+          }
+        },
+        "title": "SupplementRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "Wall": {
+        "additionalProperties": false,
+        "properties": {
+          "confidence": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "end": {
+            "$ref": "#/components/schemas/Point2D",
+            "description": "Centerline end point (mm)"
+          },
+          "height": {
+            "description": "mm",
+            "exclusiveMinimum": 0.0,
+            "title": "Height",
+            "type": "number"
+          },
+          "id": {
+            "minLength": 1,
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WallKind",
+            "default": "unknown"
+          },
+          "start": {
+            "$ref": "#/components/schemas/Point2D",
+            "description": "Centerline start point (mm)"
+          },
+          "thickness": {
+            "description": "mm",
+            "exclusiveMinimum": 0.0,
+            "title": "Thickness",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "start",
+          "end",
+          "thickness",
+          "height"
+        ],
+        "title": "Wall",
+        "type": "object"
+      },
+      "WallKind": {
+        "enum": [
+          "exterior",
+          "interior",
+          "unknown"
+        ],
+        "title": "WallKind",
+        "type": "string"
+      },
+      "WallPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Height"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WallKind"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "thickness": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thickness"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "WallPatch",
+        "type": "object"
+      },
+      "WallReference": {
+        "additionalProperties": false,
+        "properties": {
+          "length_mm": {
+            "exclusiveMinimum": 0.0,
+            "title": "Length Mm",
+            "type": "number"
+          },
+          "wall_id": {
+            "title": "Wall Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "wall_id",
+          "length_mm"
+        ],
+        "title": "WallReference",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "2D floor plan (image/DXF) -> Plan -> 3D (.glb) / per-wall .dxf / JSON",
+    "title": "Auto-BIM API",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/jobs": {
+      "post": {
+        "operationId": "create_job_api_jobs_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_job_api_jobs_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported file type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a conversion job from an uploaded floor plan (image or .dxf)",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job not found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get job status and Plan",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/files/{kind}": {
+      "get": {
+        "operationId": "get_job_file_api_jobs__job_id__files__kind__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/FileKind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {},
+              "image/vnd.dxf": {},
+              "model/gltf-binary": {}
+            },
+            "description": "The requested output file"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job is not in a state that allows this"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Download an output file (dxf | glb | json)",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/jobs/{job_id}/supplement": {
+      "post": {
+        "operationId": "supplement_job_api_jobs__job_id__supplement_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupplementRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Supplement references unknown elements"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Job is not in a state that allows this"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit user corrections and regenerate (increments revision)",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness check",
+        "tags": [
+          "meta"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      # CI always runs on the fake models
+      AUTOBIM_WALL_SEGMENTER: fake
+      AUTOBIM_OPENING_DETECTOR: fake
+      AUTOBIM_DIMENSION_READER: fake
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-dev.lock
+      - name: Install (locked)
+        run: |
+          pip install -r requirements-dev.lock
+          pip install --no-deps -e .
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest -q
+      - name: OpenAPI snapshot is current
+        run: python scripts/export_openapi.py --check
+      - name: CLAUDE.md points at AGENTS.md
+        run: test "$(cat CLAUDE.md)" = "@AGENTS.md"
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t autobim-be:ci .
+      - name: Smoke test (health)
+        run: |
+          docker run -d --name api -p 8000:8000 autobim-be:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/health && exit 0
+            sleep 1
+          done
+          docker logs api
+          exit 1
+      - name: Smoke test (fake plan -> glb/dxf inside the image)
+        run: |
+          docker exec api python -c "
+          import numpy as np, pathlib
+          from app.core.config import get_settings
+          from app.models.registry import build_models
+          from app.recognition.pipeline import image_to_plan
+          from app.export import write_outputs
+          plan = image_to_plan(np.zeros((8, 8, 3), np.uint8), build_models(get_settings().models))
+          out = write_outputs(plan, pathlib.Path('/tmp/smoke'))
+          assert all(p.stat().st_size > 0 for p in out.values()), out
+          print({k.value: p.stat().st_size for k, p in out.items()})
+          "
