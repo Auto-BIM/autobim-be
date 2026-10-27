@@ -84,49 +84,62 @@ GitHub: [#4](https://github.com/Auto-BIM/autobim-be/issues/4)
 
 ---
 
-## #5 모델 어댑터 (CubiCasa 베이스라인) + 전처리
+## #5 모델 어댑터(autobim_seg) + 실행 시 전처리 + 후처리 견고화
 
 GitHub: [#5](https://github.com/Auto-BIM/autobim-be/issues/5)
 
-**배경**: `app/models/cubicasa.py`는 자리만 있다(`NotImplementedError`). 후처리(`app/recognition/walls.py`)는 축에 평행하고 끊김 없는 Fake 마스크만 다룬다.
+**배경**: 모델은 별도 레포 `autobim-model`에서 만든다. SegFormer 계열 4클래스 분할(0 배경, 1 벽, 2 문, 3 창)을 AI Hub 평면도로 학습하고, 추론 패키지 `autobim_seg`로 내보낸다.
 
-**건드리는 폴더**: `app/models/`(`base.py` 제외), `app/preprocess/`, `app/recognition/`, `tests/test_models.py`, `tests/test_recognition.py`, `tests/test_preprocess.py`(신규)
+```python
+seg = autobim_seg.load(weights, device)
+r = seg.predict(img)   # img: (H, W, 3) uint8 RGB
+r.labels               # (H, W) uint8, 0~3
+r.probs                # (H, W, 4), 선택
+r.openings()           # [(type, (x0, y0, x1, y1), conf)]
+```
+
+타일링·정규화는 `predict` 안에서 하고, 마스크 → 문·창 박스 변환도 패키지가 담당한다. 문 라벨은 열림 호까지 감싼 사각형이라, 개구부 위치·폭은 박스를 벽 방향으로 투영해 구한다.
+지금 `app/models/cubicasa.py`는 자리만 있고(`NotImplementedError`), 후처리(`app/recognition/walls.py`)는 축에 평행하고 끊김 없는 Fake 마스크만 다룬다. 계약(`app/models/base.py`)은 바꾸지 않는다.
+
+**건드리는 폴더**: `app/models/`(`base.py` 제외), `app/preprocess/`, `app/recognition/`, `tests/test_models.py`, `tests/test_recognition.py`, `tests/test_preprocess.py`(신규). optional extra와 모델 설정을 위해 `pyproject.toml`·lock 파일과 `config/settings.yaml`의 모델 항목도 수정한다.
 
 **할 일**
-- CubiCasa5k 모델 로딩(가중치 경로는 설정이나 환경변수로 받는다), 추론, 출력 → `WallMask` / `OpeningDetection` 변환.
-- torch 같은 무거운 의존성은 optional extra(`pip install .[cubicasa]`)로 둔다. 기본 설치와 CI는 영향받지 않아야 한다.
-- 치수 OCR `DimensionReader` 구현을 하나 이상 추가한다(엔진은 자유).
-- 전처리: 기울기 보정, 잡음 제거, 이진화, 해상도 정규화.
-- 후처리 견고화: 개구부 때문에 끊긴 벽 이어 붙이기, 사선 벽, 잡음 마스크.
+- 어댑터: `autobim_seg`를 감싸 `WallSegmenter`·`OpeningDetector`를 구현한다. 같은 이미지는 `predict`를 한 번만 돌려 두 인터페이스가 결과를 공유한다(이미지 단위 캐시).
+- registry에 `"seg"`를 추가한다. 가중치 경로와 sha256은 설정이나 환경변수로 받는다.
+- `autobim_seg`와 torch는 optional extra로 둔다. 기본 설치와 CI는 Fake로 돌고 영향받지 않아야 한다.
+- CubiCasa는 베이스라인 비교용으로 모델 레포가 같은 `predict` 형식으로 감싸 제공한다. 백엔드의 `cubicasa` 어댑터 자리는 `seg` 어댑터로 대체하거나 제거한다.
+- 전처리(실행 시): 사진 도면 원근 보정·조명 보정, 모델 카드의 입력 조건(벽 두께 px 범위)에 맞춘 해상도 조정.
+- 후처리 견고화: 개구부로 끊긴 벽 잇기, 사선 벽, 잡음 마스크, 문·창 박스의 벽 방향 투영.
 
 **완료 조건 (테스트)**
 - [ ] 기본 `pytest`는 Fake만으로 통과하고 torch를 import하지 않는다.
-- [ ] CubiCasa 출력 → 인터페이스 변환 함수는 합성 텐서(가짜 모델 출력)로 단위 테스트한다.
-- [ ] 실제 가중치 테스트는 `@pytest.mark.model`로 표시하고, `AUTOBIM_CUBICASA_WEIGHTS`가 있을 때만 실행한다.
+- [ ] 어댑터는 가짜 `autobim_seg` 모듈(합성 `labels`·`openings`)로 단위 테스트한다. 같은 이미지에 `WallSegmenter`·`OpeningDetector`를 모두 호출해도 캐시로 `predict`가 1회만 호출되는 것을 검증한다.
+- [ ] 실제 가중치 테스트는 `@pytest.mark.model`로 표시하고, 환경변수로 opt-in할 때만 실행한다.
 - [ ] 전처리: 코드로 만든 기울어진(예: 3°) 합성 평면도를 보정하면 벽 선분 각도 오차가 0.5° 이하다.
 - [ ] 후처리: 개구부 간격이 있는 합성 마스크 → 벽 하나로 이어지고, 개구부가 그 벽에 붙는다.
 - [ ] 가중치 파일은 커밋하지 않는다(받는 방법은 README에 적는다).
 
 ---
 
-## #6 평가 하네스 (AI Hub COCO → 정답 마스크, IoU)
+## #6 Plan 단위 시스템 평가
 
 GitHub: [#6](https://github.com/Auto-BIM/autobim-be/issues/6)
 
-**배경**: 모델과 후처리 품질을 수치로 비교할 기준이 없다.
+**배경**: 모델 성능 지표(픽셀 IoU, 문·창 객체 precision/recall)는 모델 레포 `autobim-model`이 잰다. 백엔드는 후처리까지 포함한 Plan 단위 평가만 한다.
 
 **건드리는 폴더**: `eval/`(신규), `tests/test_eval.py`(신규). 앱 코드는 읽기만 하고 수정하지 않는다.
 
 **할 일**
-- AI Hub 평면도 COCO 어노테이션 → 클래스별 정답 마스크(벽, 문, 창) 래스터화.
-- 지표: 벽 마스크 IoU, 문·창 검출 precision/recall(IoU ≥ 0.5), 선택적으로 Plan 단위 지표(벽 수, 길이 오차).
-- CLI: `python -m eval.run --dataset $AUTOBIM_DATASET_DIR --wall-segmenter fake|cubicasa ...` → JSON/CSV 리포트.
-- 데이터셋 경로는 환경변수나 인자로 받는다. 데이터셋은 커밋하지 않는다.
+- 입력: AI Hub COCO 정답(데이터셋 경로는 인자나 환경변수로 받는다) + 예측 마스크 또는 모델. 데이터셋은 커밋하지 않는다.
+- 같은 후처리로 "정답 마스크 → Plan"과 "예측 마스크 → Plan"을 각각 만들고, 정답 폴리곤 기준 Plan과 비교한다.
+- 지표: 벽 개수, 벽 길이 오차, 개구부 개수(precision/recall), 개구부 위치·폭 오차(px, 축척이 있으면 mm).
+- 보고: 정답 마스크 결과는 후처리 한계로, 예측 결과와의 차이는 모델 기여 오차로 나눠 보고한다.
+- CLI: `python -m eval.run` → 리포트 파일.
+- 범위 밖: 픽셀 IoU 같은 모델 지표(모델 레포 담당).
 
 **완료 조건 (테스트)**
-- [ ] 코드로 만든 작은 COCO JSON(폴리곤 2~3개)으로 래스터화 결과 픽셀 수를 검증한다.
-- [ ] IoU, precision, recall을 손으로 계산한 기대값과 비교한다(완전 일치, 부분 겹침, 겹침 없음).
-- [ ] Fake 모델로 합성 데이터셋에서 CLI를 끝까지 실행하면 리포트 파일이 생성된다.
+- [ ] 코드로 만든 작은 COCO JSON으로 지표 기대값을 검증한다.
+- [ ] Fake로 CLI를 끝까지 실행하면 리포트가 생성된다.
 - [ ] 데이터셋이 없으면 친절한 오류 메시지를 내고 종료 코드 ≠ 0.
 
 ---
