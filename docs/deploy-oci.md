@@ -271,7 +271,7 @@ cd /opt/autobim/models/seg-v1 && sha256sum -c SHA256SUMS
 # 4) 교체
 ln -sfn seg-v1 /opt/autobim/models/current
 docker compose -f /opt/autobim/src/autobim-be/deploy/docker-compose.prod.yml restart api
-curl -fsS http://localhost/health        # "model": "seg-v1" 확인 (BE-N3 이후)
+curl -fsS http://localhost/health        # "model": "seg-v1" 확인 (#12 (BE-N3) 이후)
 /opt/autobim/src/autobim-be/deploy/smoke.sh http://localhost <tune 도면>.png
 
 # 5) 롤백: 링크만 되돌리고 재시작
@@ -303,7 +303,7 @@ ln -sfn releases/$TS /opt/autobim/fe/current     # 즉시 반영, 재시작 불�
 | 로그 | `docker compose -f deploy/docker-compose.prod.yml logs -f --tail 200 api` |
 | 백엔드 갱신 | `deploy/deploy.sh develop` (시연 기간에는 태그: `deploy/deploy.sh v1.0.0`) |
 | 디스크 | `df -h /`, `docker system df`. 오래된 이미지 정리 `docker image prune -f` |
-| 작업 파일 | TTL 정리(BE-N4) 전에는 `docker volume inspect autobim_jobs`로 경로를 찾아 직접 확인 |
+| 작업 파일 | TTL 정리(#13 (BE-N4)) 전에는 `docker volume inspect autobim_jobs`로 경로를 찾아 직접 확인 |
 | 백업 | 콘솔 → Block Storage → Boot Volumes → 이 VM 부트 볼륨 → Create manual backup. **G4(12/11)와 시연 전날** |
 | 재부팅 후 | `restart: unless-stopped`라 자동으로 뜬다. `curl localhost/health`로 확인 |
 
@@ -346,7 +346,7 @@ open http://localhost:8080
 | 증상 | 원인 후보 | 확인 |
 |---|---|---|
 | 밖에서 접속 안 됨, VM 안 `curl localhost`는 됨 | 보안 목록·iptables | §3 |
-| 업로드가 413 | 30 MB 초과(Caddy) 또는 픽셀 상한(BE-N3) | 응답 `detail.code` |
+| 업로드가 413 | 30 MB 초과(Caddy) 또는 픽셀 상한(#12 (BE-N3)) | 응답 `detail.code` |
 | 작업이 계속 `queued` | 앞 작업이 추론 중(동시 1개) 또는 작업 스레드 죽음 | `logs api` |
 | 모든 도면 크기가 같은 비율로 이상함 | `AUTOBIM_DIMENSION_READER=fake`가 켜져 있음 | `.env` |
 | 앱이 시작 직후 종료 | 번들 경로·sha256·`autobim_seg` 버전 불일치 | `logs api` 첫 줄 |

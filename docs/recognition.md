@@ -1,6 +1,6 @@
 # 인식 v1 — 벽 마스크 + 개구부 박스 → Plan
 
-> 이슈 BE-N1의 명세다. 모델 출력(픽셀)을 Plan(mm)으로 바꾸는 후처리를 정한다.
+> 이슈 #10 (BE-N1)의 명세다. 모델 출력(픽셀)을 Plan(mm)으로 바꾸는 후처리를 정한다.
 > 검증된 프로토타입이 [recognition-prototype/](recognition-prototype/)에 있다(numpy + scipy, 합성 도면 테스트 18개 통과, Fake 도면 결과 재현).
 > 이식이 끝나면 프로토타입 폴더는 지운다.
 
@@ -116,7 +116,7 @@ Fake 도면에서는 지금처럼 `o3`의 `low_confidence` **하나만** 나와�
 
 ## 7. 디버그 오버레이
 
-`scripts/debug_overlay.py <image> <plan.json> -o out.png`(BE-N1에서 추가). 원본 위에 다음을 그린다.
+`scripts/debug_overlay.py <image> <plan.json> -o out.png`(#10 (BE-N1)에서 추가). 원본 위에 다음을 그린다.
 
 - 벽 중심선(외벽 빨강, 내벽 파랑)과 두께 윤곽, 벽 ID
 - 개구부 구간(문 초록, 창 하늘색)과 ID, `source`(gap/box/nearest)

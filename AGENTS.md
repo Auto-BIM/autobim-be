@@ -27,7 +27,7 @@ POST /api/jobs ─▶ app/jobs/runner.py
 | `app/models/base.py` | **계약**: 모델 인터페이스 |
 | `app/api/` | 라우터(경로·형식은 계약) |
 | `app/jobs/` | 작업 저장소(인메모리 + 로컬 파일), 실행기, 보충 입력 적용 |
-| `app/models/` | Fake / CubiCasa 어댑터(자리만) / 레지스트리. 계획: `seg`(#5), `replay`(BE-N2) |
+| `app/models/` | Fake / CubiCasa 어댑터(자리만) / 레지스트리. 계획: `seg`(#5), `replay`(#11 (BE-N2)) |
 | `app/preprocess/`, `app/recognition/` | 이미지 경로 |
 | `app/dxf_input/` | DXF 경로 |
 | `app/geometry/`, `app/export/` | 3D 기하, 파일 출력 |

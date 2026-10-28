@@ -25,16 +25,16 @@
 
 | ID | 제안 | 근거 | 확정 방법 |
 |---|---|---|---|
-| P-01 | 역할: 항민 = 모델 전부·`autobim_seg`·#5·BE-N3·#7·BE-N6(조건부)·일정 / 조예준 = BE-N1·#2·BE-N2·BE-N4·BE-N5 / 강민재 = 프론트 리드 / 임준형 = 뷰어·2D 보기·#6·시간 측정 | [ROADMAP](ROADMAP.md) §7 | 킥오프 |
+| P-01 | 역할: 항민 = 모델 전부·`autobim_seg`·#5·#12 (BE-N3)·#7·#15 (BE-N6)(조건부)·일정 / 조예준 = #10 (BE-N1)·#2·#11 (BE-N2)·#13 (BE-N4)·#14 (BE-N5) / 강민재 = 프론트 리드 / 임준형 = 뷰어·2D 보기·#6·시간 측정 | [ROADMAP](ROADMAP.md) §7 | 킥오프 |
 | P-02 | 모델 구조는 **UNet + 경량 인코더**(후보 `unet_r18`, `unet_r18_lite`, `unet_effb0`, `unet_mnv2`), G1 A1 벤치로 확정. **SegFormer 계열은 기본 후보에서 제외** — x86 측정에서 `segformer_b0`가 FLOPs는 가장 적어도 `unet_r18`보다 느리고(1073 vs 751 ms/타일), 출력이 1/4 해상도라 얇은 벽에 불리하다. 이슈 #5 본문의 "SegFormer 계열" 문구를 고친다 | [SYSTEM_SPEC](SYSTEM_SPEC.md) §5.1 | G1 (11/1) |
 | P-03 | 서빙 추론은 **ONNX Runtime(CPU)**. 서빙 이미지에 torch를 넣지 않는다 | A1에 GPU 없음. onnxruntime aarch64 wheel 확인(1.31.1) | 킥오프 |
 | P-04 | 추론 배율 기본 **0.5**, 학습 배율 = 추론 배율 | A3 한 장 타일 35개 → 6개. 얇은 벽 P10 10 px → 5 px | G1 |
 | P-05 | Caddy 하나가 프론트 정적 파일과 `/api`를 **같은 출처**로 제공(CORS 불필요). 이미지는 VM에서 직접 빌드(레지스트리 없음) | [deploy-oci.md](../deploy-oci.md) | 킥오프 |
 | P-06 | 프론트: Vite + React + TypeScript + @react-three/fiber·drei + openapi-typescript | [FRONTEND_SPEC](https://github.com/Auto-BIM/autobim-fe/blob/develop/docs/FRONTEND_SPEC.md) §2 | 프론트 두 사람 |
 | P-07 | 모델 번들 = `model.onnx` + `model.json` + `pkg/autobim_seg/` + `SHA256SUMS` + `MODEL_CARD.md`. OCI에서는 `current` 링크로 교체·롤백, `PYTHONPATH`로 번들의 패키지를 쓴다 | [SYSTEM_SPEC](SYSTEM_SPEC.md) §3.1 | 킥오프 |
-| P-08 | 백엔드 이슈 재구성: #5는 `seg` 어댑터로 축소, 새 이슈 BE-N1~N6, #3·#4는 P2 | [next-tasks.md](../next-tasks.md) | 킥오프 |
+| P-08 | 백엔드 이슈 재구성: #5는 `seg` 어댑터로 축소, 새 이슈 #10~#15 (BE-N1~N6), #3·#4는 P2 | [next-tasks.md](../next-tasks.md) | 킥오프 |
 | P-09 | 일정: G0 10/30, G1 11/1, M1 11/8, G2 11/15, G3 11/29, M4 12/6, **동결 12/11** | [ROADMAP](ROADMAP.md) §4 | 킥오프 |
-| P-10 | AGENTS.md 규칙 2 문구: "Plan이 바뀌면 `SCHEMA_VERSION`, API가 바뀌면 `API_VERSION`을 올린다" (Plan이 그대로인 계약 PR에서 스키마 버전을 올리지 않기 위해) | BE-N3에서 Plan은 안 바뀜 | 항민 |
+| P-10 | AGENTS.md 규칙 2 문구: "Plan이 바뀌면 `SCHEMA_VERSION`, API가 바뀌면 `API_VERSION`을 올린다" (Plan이 그대로인 계약 PR에서 스키마 버전을 올리지 않기 위해) | #12 (BE-N3)에서 Plan은 안 바뀜 | 항민 |
 | P-11 | 실제 도면 개발·평가는 **평가 팩 + replay 어댑터**로 한다. 조회 키는 디코딩한 RGB의 sha1 | 모델 런타임 없이 인식 개발, 서빙과 같은 개구부 함수 | 킥오프 |
 | P-12 | 인식 v1은 [recognition.md](../recognition.md)의 알고리즘(검증된 프로토타입)을 이식한다 | 합성 테스트 18개, Fake 재현 | 조예준 |
 
@@ -48,10 +48,10 @@
 | O-02 | 과목 최종 산출물과 마감(보고서, 발표자료, 포스터, 영상, 코드 제출 형식) | W15 작업량 | 항민 | 11/6 | 발표자료 + 시연만 가정하고 W15에 작성 |
 | O-03 | OCI 계정 상태(Always Free 전용 / PAYG), 리전, A1 인스턴스가 이미 있는지 | 프로비저닝·회수 위험 | 항민 | 10/29 | 이번 주에 새로 만든다 |
 | O-04 | 도메인·HTTPS가 필요한가 | Caddy 설정 | 팀 | 11/8 | IP + HTTP |
-| O-05 | AI Hub 데이터와 파생물(정답 마스크, 평가 팩)을 팀원과 어디까지 공유할 수 있나(연구실 서버 계정 발급 / 각자 AI Hub 승인 / 항민만 다룸) | BE-N1 실데이터 조정, #6 | 항민(AI Hub 약관·신청 범위 확인) | 11/2 | 항민만 다룬다. 조예준은 합성 데이터로 개발, 실데이터 결과는 항민이 돌려 공유 |
+| O-05 | AI Hub 데이터와 파생물(정답 마스크, 평가 팩)을 팀원과 어디까지 공유할 수 있나(연구실 서버 계정 발급 / 각자 AI Hub 승인 / 항민만 다룸) | #10 (BE-N1) 실데이터 조정, #6 | 항민(AI Hub 약관·신청 범위 확인) | 11/2 | 항민만 다룬다. 조예준은 합성 데이터로 개발, 실데이터 결과는 항민이 돌려 공유 |
 | O-06 | 모델 레포를 GitHub(Auto-BIM, 비공개/공개)에 올리나 | 리뷰·백업·번들 코드 공유 | 항민 | 11/2 | 연구실 서버에만 두고 번들로 전달 |
 | O-07 | 데모 도면 출처와 공개 시연 가능 여부(팀이 그린 도면 / AI Hub 이미지 / 공개 도면) | 데모 세트, FE 데모 모드 | 팀 | 11/22 | 팀이 직접 그린 도면 + AI Hub 이미지는 화면에만 |
-| O-08 | 시연에 쓸 SketchUp 버전(Pro 연도 / 무료 웹판 등) | 버전마다 DXF 가져오기 지원이 다름 | 조예준 | 11/16 | BE-N5에서 가용한 버전으로 먼저 확인 |
+| O-08 | 시연에 쓸 SketchUp 버전(Pro 연도 / 무료 웹판 등) | 버전마다 DXF 가져오기 지원이 다름 | 조예준 | 11/16 | #14 (BE-N5)에서 가용한 버전으로 먼저 확인 |
 | O-09 | 계획서의 정량 목표(IoU 등)가 있나, 값은 | 평가표 목표 열 | 항민(계획서) | 11/6 | 목표 열 비우고 베이스라인 대비로 보고 |
 | O-10 | ASSUMPTIONS의 "확인 필요"(창대 900)와 벽 높이 2400을 확정하나 | 3D 높이 | 팀 | 11/15 | 그대로 둔다 |
 | O-12 | 연구실 서버에서 OCI로 직접 파일 전송(외부 SSH)이 되나 | 번들 전달 경로 | 항민 | 11/5 | 노트북을 거쳐 전달 |
