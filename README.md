@@ -6,10 +6,12 @@ Auto-BIM 백엔드. 2D 평면도(이미지 또는 DXF)를 중간 표현 **Plan**
 - API: [docs/api.md](docs/api.md) · [docs/openapi.json](docs/openapi.json)
 - 기본값: [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md)
 - 다음 작업: [docs/next-tasks.md](docs/next-tasks.md)
+- 프로젝트 로드맵·시스템 명세·결정 기록: [docs/project/](docs/project/README.md)
+- 인식 알고리즘: [docs/recognition.md](docs/recognition.md) · OCI 배포: [docs/deploy-oci.md](docs/deploy-oci.md)
 - 에이전트/기여 규칙: [AGENTS.md](AGENTS.md) ([CLAUDE.md](CLAUDE.md)는 AGENTS.md를 불러옴)
 
-> 현재 상태: 인식 모델은 **Fake**(고정 결과)만 동작한다. CubiCasa 어댑터와 DXF 입력은 자리만 있다.
-> 벽 접합부 처리가 아직 없어서 glb/dxf 모서리가 맞지 않는다(이슈 #2).
+> 현재 상태: 인식 모델은 **Fake**(고정 결과)만 동작한다. 실제 모델은 `autobim-model`이 만드는 모델 번들을 `seg` 어댑터(이슈 #5)로 붙일 예정이다. DXF 입력은 자리만 있다(P2).
+> 벽 접합부 처리가 아직 없어서 glb/dxf 모서리가 맞지 않는다(이슈 #2). 실제 마스크용 인식 v1은 BE-N1([docs/recognition.md](docs/recognition.md)).
 
 ## 로컬 실행
 
