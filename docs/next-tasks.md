@@ -272,4 +272,4 @@ GitHub: [#3](https://github.com/Auto-BIM/autobim-be/issues/3) — 범위·완료
 
 ## #4 작업 영속화 · 큐 분리 (P2)
 
-GitHub: [#4](https://github.com/Auto-BIM/autobim-be/issues/4) — 업로드 크기 제한·동시 실행 제한은 #13 (BE-N4)로 옮겼다. 나머지(영속 저장소, 프로세스 밖 워커, 리비전 보존 정책, 이력 API)는 P2다. 영속화 전까지 uvicorn 워커는 1개여야 한다.
+GitHub: [#4](https://github.com/Auto-BIM/autobim-be/issues/4) — 업로드 크기 제한은 #12 (BE-N3), 동시 실행 제한은 #13 (BE-N4)로 옮겼다. 나머지(영속 저장소, 프로세스 밖 워커, 리비전 보존 정책, 이력 API)는 P2다. 작업 TTL 정리는 #13이 만들고, #4는 그 정리가 영속 저장소에서도 동작하게 한다. 영속화 전까지 uvicorn 워커는 1개여야 한다.
