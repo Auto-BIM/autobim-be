@@ -46,7 +46,7 @@ P2는 G3에서 **많아야 하나**만 고른다. P0가 하나라도 빨간불�
 | 백엔드 이슈 | #2~#7 열림(담당자 없음). PR #8(#5·#6 문서 정렬)은 리뷰 대기 | GitHub |
 | 백엔드 인식(마스크 → 벽) | ⚠️ 축에 평행하고 끊김 없는 Fake 마스크만 처리. 실제 모델 마스크(개구부 끊김, 잡음)는 처리 못 함 | `app/recognition/walls.py` |
 | 인식 v1 프로토타입 | ✅ 이번에 작성·검증. 합성 도면 18개 테스트 통과, Fake 도면 결과 재현, A3 크기 마스크 약 2초(x86) | [recognition.md](../recognition.md), `docs/recognition-prototype/` |
-| 데이터셋 | ⚠️ 1차 감사 실패(1px 밀림, 평가 누수 44장) → 수정·재감사 **진행 여부 확인 필요** | 미결 O-11 |
+| 데이터셋 | ✅ v2 재감사 **조건부 진행 가능**(10/28). 1px 밀림·평가 누수 해소. train 7,257 / tune 806 / APT100 100 → **G0 통과** | `reports/dataset_audit_v2/` |
 | 모델 학습 | ⏳ 아직 없음 | |
 | 추론 패키지 `autobim_seg` | ⏳ 계약만 있음 | 모델 레포 `docs/MODEL_SPEC.md` |
 | CPU 벤치마크 | ✅ 스크립트 작성·검증(x86 2 vCPU 참고값 확보). **A1 실측은 아직** | `autobim-model/scripts/bench_cpu.py` |
