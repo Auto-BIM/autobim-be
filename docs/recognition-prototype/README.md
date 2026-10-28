@@ -1,7 +1,7 @@
 # 인식 v1 프로토타입 (참고 구현)
 
 [../recognition.md](../recognition.md)의 알고리즘을 검증한 코드다. 앱 코드가 아니며 CI의 `pytest`(`testpaths = tests`)는 이 폴더를 돌리지 않는다.
-BE-N1에서 `app/recognition/`으로 이식한 뒤 **이 폴더를 지운다**(이식 가이드: recognition.md §8).
+#10 (BE-N1)에서 `app/recognition/`으로 이식한 뒤 **이 폴더를 지운다**(이식 가이드: recognition.md §8).
 
 | 파일 | 내용 |
 |---|---|

@@ -12,7 +12,7 @@
 | P0-2 | GitHub 정리(라벨·마일스톤·이슈) | autobim-be, autobim-fe | 항민 |
 | P0-3 | 모델 레포 문서·벤치 스크립트 반영 | autobim-model | 항민 |
 | P0-4 | 프론트 레포 부트스트랩(FE-1) | autobim-fe | 강민재 |
-| BE-N1, #2, BE-N2, BE-N3, #5, BE-N4, #7, #6, BE-N5, BE-N6 | 백엔드 이슈 | autobim-be | 담당 |
+| #10 (BE-N1), #2, #11 (BE-N2), #12 (BE-N3), #5, #13 (BE-N4), #7, #6, #14 (BE-N5), #15 (BE-N6) | 백엔드 이슈 | autobim-be | 담당 |
 | ML-0a/0b, ML-2, ML-4, ML-5, ML-6 | 모델 작업 | autobim-model | 항민 |
 | FE-2~8, FE-5, FE-P1 | 프론트 이슈 | autobim-fe | 담당 |
 
@@ -30,7 +30,7 @@
 3. git switch -c feature/project-docs
 4. 번들의 파일을 같은 경로로 복사한다(덮어쓰기):
    - docs/project/*.md (새 폴더), docs/recognition.md, docs/deploy-oci.md, docs/next-tasks.md
-   - docs/recognition-prototype/ 폴더 전체 (인식 v1 참고 구현, BE-N1 이식 후 삭제 예정)
+   - docs/recognition-prototype/ 폴더 전체 (인식 v1 참고 구현, #10 (BE-N1) 이식 후 삭제 예정)
    - AGENTS.md, README.md
    그 밖의 파일은 바꾸지 않는다. 앱 코드(app/), 테스트, 계약 파일은 건드리지 않는다.
 5. 검사: pytest -q / ruff check . / python scripts/export_openapi.py --check /
@@ -100,11 +100,11 @@
 
 ---
 
-## BE-N1 인식 v1 (조예준)
+## #10 (BE-N1) 인식 v1 (조예준)
 
 ```text
-[작업] BE-N1 인식 v1 — GitHub 이슈 #<번호>
-[읽을 것] AGENTS.md, docs/recognition.md 전체, docs/next-tasks.md의 BE-N1 절, docs/recognition-prototype/*.py
+[작업] 이슈 #10 (BE-N1) 인식 v1
+[읽을 것] AGENTS.md, docs/recognition.md 전체, docs/next-tasks.md의 #10 (BE-N1) 절, docs/recognition-prototype/*.py
 [할 일] recognition.md §8 이식 가이드대로 프로토타입을 app/recognition/으로 옮긴다.
  - PixelWall의 기존 필드·메서드 유지, OpeningDetection(계약)은 그대로 사용
  - pipeline._classify → R7, pipeline._attach_openings → R9, 개구부 위치·폭·기본값 규칙은 §4, 확인 항목은 §5
@@ -128,22 +128,22 @@
 [끝나면] 검사 통과 → feature/2-junctions → PR.
 ```
 
-## BE-N2 replay 어댑터 (조예준)
+## #11 (BE-N2) replay 어댑터 (조예준)
 
 ```text
-[작업] BE-N2 replay 어댑터 — 이슈 #<번호>
-[읽을 것] AGENTS.md, docs/next-tasks.md의 BE-N2 절(평가 팩 형식 포함), docs/project/SYSTEM_SPEC.md §3.3, app/models/
+[작업] 이슈 #11 (BE-N2) replay 어댑터
+[읽을 것] AGENTS.md, docs/next-tasks.md의 #11 (BE-N2) 절(평가 팩 형식 포함), docs/project/SYSTEM_SPEC.md §3.3, app/models/
 [할 일] 절의 "할 일"과 "완료 조건". 팩은 테스트에서 tmp_path에 코드로 만든다(PIL로 PNG, JSON).
        sha1은 app/preprocess/image.load_image 결과의 tobytes()로 계산한다.
 [지킬 것] 건드리는 폴더만. app/models/base.py(계약) 변경 금지. 팩·이미지 커밋 금지.
 [끝나면] 검사 통과 → feature/<번호>-replay-adapter → PR.
 ```
 
-## BE-N3 계약 PR C1 (항민)
+## #12 (BE-N3) 계약 PR C1 (항민)
 
 ```text
-[작업] BE-N3 계약 PR — 이슈 #<번호>. 이 PR은 계약 담당 PR이다.
-[읽을 것] AGENTS.md(규칙 2), docs/next-tasks.md의 BE-N3 절, docs/project/SYSTEM_SPEC.md §7·§8, docs/api.md
+[작업] 이슈 #12 (BE-N3) 계약 PR. 이 PR은 계약 담당 PR이다.
+[읽을 것] AGENTS.md(규칙 2), docs/next-tasks.md의 #12 (BE-N3) 절, docs/project/SYSTEM_SPEC.md §7·§8, docs/api.md
 [할 일] 413(file_too_large, image_too_large), 디코딩 불가 이미지 415, /health 필드, limits 설정·환경변수,
        API_VERSION 0.2.0, docs/openapi.json 재생성(python scripts/export_openapi.py), docs/api.md 갱신.
        픽셀 수는 PIL Image.open으로 헤더만 읽어 판단한다(전체 디코딩 금지). SCHEMA_VERSION은 그대로.
@@ -165,11 +165,11 @@
 [끝나면] 검사 통과 → feature/5-seg-adapter → PR.
 ```
 
-## BE-N4 서빙 안정화 (조예준)
+## #13 (BE-N4) 서빙 안정화 (조예준)
 
 ```text
-[작업] BE-N4 서빙 안정화 — 이슈 #<번호>
-[읽을 것] AGENTS.md, docs/next-tasks.md의 BE-N4 절, docs/project/SYSTEM_SPEC.md §9, app/jobs/, app/preprocess/
+[작업] 이슈 #13 (BE-N4) 서빙 안정화
+[읽을 것] AGENTS.md, docs/next-tasks.md의 #13 (BE-N4) 절, docs/project/SYSTEM_SPEC.md §9, app/jobs/, app/preprocess/
 [할 일] 절의 "할 일". 세마포어를 잡기 전에는 상태를 queued로 둔다(runner에서 running 전환 위치 조정).
        느린 가짜 모델(threading.Event로 제어)로 동시성 테스트를 결정적으로 만든다(sleep 금지).
 [지킬 것] 건드리는 폴더만. API 형식 변경 금지(필요하면 멈추고 알린다).
@@ -192,7 +192,7 @@
 
 ```text
 [작업] 이슈 #6 Plan 단위 시스템 평가
-[읽을 것] AGENTS.md, docs/next-tasks.md의 #6·BE-N2 절, docs/project/EVALUATION_PLAN.md §3·§4, app/recognition/(읽기만)
+[읽을 것] AGENTS.md, docs/next-tasks.md의 #6·#11 (BE-N2) 절, docs/project/EVALUATION_PLAN.md §3·§4, app/recognition/(읽기만)
 [할 일] eval/ 패키지: replay로 gt·pred 두 번 인식 → 지표(렌더 벽 IoU, 길이 오차, 개구부 P/R/F1·위치·폭, 성공률, 확인 항목 수)
        → summary.json, per_image.csv. CLI python -m eval.run. 시간 측정 eval/measure_latency.py(URL, 이미지 폴더 → CSV, p50/p90).
        테스트용 팩은 tmp_path에 코드로 만든다.
@@ -200,21 +200,21 @@
 [끝나면] 검사 통과 → feature/6-plan-eval → PR.
 ```
 
-## BE-N5 SketchUp 확인 (조예준)
+## #14 (BE-N5) SketchUp 확인 (조예준)
 
 ```text
-[작업] BE-N5 SketchUp 호환 — 이슈 #<번호>
-[읽을 것] docs/next-tasks.md의 BE-N5 절, app/export/dxf.py
+[작업] 이슈 #14 (BE-N5) SketchUp 호환
+[읽을 것] docs/next-tasks.md의 #14 (BE-N5) 절, app/export/dxf.py
 [할 일] (사람) SketchUp에서 확인한 결과를 docs/sketchup.md에 적는다. (에이전트) 실패 항목이 있으면
        3DFACE 내보내기 옵션(설정 export.dxf_mesh: polyface|3dface)과 테스트(블록 수, $INSUNITS)를 추가한다.
 [끝나면] feature/<번호>-sketchup → PR.
 ```
 
-## BE-N6 대체 데모 페이지 (조건부)
+## #15 (BE-N6) 대체 데모 페이지 (조건부)
 
 ```text
-[작업] BE-N6 대체 데모 페이지 — M1에서 프론트 3D가 안 떴을 때만
-[읽을 것] docs/next-tasks.md의 BE-N6 절, docs/api.md
+[작업] #15 (BE-N6) 대체 데모 페이지 — M1에서 프론트 3D가 안 떴을 때만
+[읽을 것] docs/next-tasks.md의 #15 (BE-N6) 절, docs/api.md
 [할 일] app/static/fallback/index.html 한 장(업로드 → 1초 폴링 → three.js GLTFLoader, 버전 고정 CDN → 다운로드 링크),
        app/main.py에 StaticFiles 마운트(/fallback), deploy/Caddyfile에 /fallback/* 프록시.
 [완료 조건] Fake로 /fallback/에서 3D 표시, export_openapi --check 통과(OpenAPI 불변).
@@ -277,7 +277,7 @@
 
 ```text
 [작업] ML-6 make_eval_pack.py → evalpacks/dev (tune 30장)
-[읽을 것] docs/MODEL_SPEC.md §9, 백엔드 docs/next-tasks.md의 BE-N2 절(같은 형식)
+[읽을 것] docs/MODEL_SPEC.md §9, 백엔드 docs/next-tasks.md의 #11 (BE-N2) 절(같은 형식)
 [할 일] 형식 그대로 생성. sha1은 PIL로 PNG를 다시 열어 convert("RGB")한 배열로 계산(백엔드와 같은 디코딩).
        목록을 splits/evalpack_dev.txt로 고정. gt/<id>.json은 COCO 폴리곤·박스(px, 픽셀 모서리 기준).
 [끝나면] 팩 경로, 이미지 수, 한 장 예시 manifest 항목. 팩은 커밋하지 않는다.
