@@ -1,0 +1,32 @@
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	handle /api/* {
+		request_body {
+			max_size 30MB
+		}
+		reverse_proxy api:8000
+	}
+
+	handle /health {
+		reverse_proxy api:8000
+	}
+
+	# Open only while debugging
+	# handle /docs* {
+	# 	reverse_proxy api:8000
+	# }
+	# handle /openapi.json {
+	# 	reverse_proxy api:8000
+	# }
+
+	handle {
+		root * /srv/fe/current
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+	}
+}

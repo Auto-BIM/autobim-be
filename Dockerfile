@@ -13,6 +13,15 @@ WORKDIR /app
 COPY requirements.lock .
 RUN pip install -r requirements.lock
 
+# Optional extras from pyproject.toml (e.g. EXTRAS=seg), pinned against the lock where they overlap.
+# Only their dependencies are installed; the app itself still runs from source.
+ARG EXTRAS=""
+COPY pyproject.toml /tmp/pyproject.toml
+RUN if [ -n "$EXTRAS" ]; then \
+      python -c "import sys, tomllib; extras = tomllib.load(open('/tmp/pyproject.toml', 'rb'))['project']['optional-dependencies']; print('\n'.join(d for e in sys.argv[1].split(',') for d in extras[e]))" "$EXTRAS" > /tmp/extras.txt \
+      && pip install -c requirements.lock -r /tmp/extras.txt; \
+    fi && rm -f /tmp/pyproject.toml /tmp/extras.txt
+
 # Run from source (not pip-installed) so config/settings.yaml resolves next to app/.
 COPY app ./app
 COPY config ./config

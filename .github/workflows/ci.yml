@@ -65,3 +65,39 @@ jobs:
           assert all(p.stat().st_size > 0 for p in out.values()), out
           print({k.value: p.stat().st_size for k, p in out.items()})
           "
+
+  deploy-stack:
+    # deploy/docker-compose.prod.yml on arm64, like the OCI A1 VM: Caddy + API with the fake
+    # models, smoke test through Caddy, non-root, job files survive an API restart.
+    runs-on: ubuntu-24.04-arm
+    env:
+      COMPOSE: docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare host dirs and deploy/.env
+        run: |
+          mkdir -p "$RUNNER_TEMP/models" "$RUNNER_TEMP/fe/releases/empty"
+          echo '<h1>Auto-BIM</h1>' > "$RUNNER_TEMP/fe/releases/empty/index.html"
+          ln -sfn releases/empty "$RUNNER_TEMP/fe/current"
+          sed -e "s#^MODELS_DIR=.*#MODELS_DIR=$RUNNER_TEMP/models#" \
+              -e "s#^FE_DIR=.*#FE_DIR=$RUNNER_TEMP/fe#" deploy/.env.example > deploy/.env
+      - name: Start stack
+        run: |
+          $COMPOSE up -d --build
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost/health && exit 0
+            sleep 2
+          done
+          $COMPOSE logs
+          exit 1
+      - name: Smoke test through Caddy
+        run: deploy/smoke.sh http://localhost
+      - name: API runs as non-root
+        run: test "$($COMPOSE exec -T api id -u)" != 0
+      - name: Job files stay on the volume across a restart
+        run: |
+          $COMPOSE restart api
+          $COMPOSE exec -T api sh -c 'ls /data/jobs/*/r0/model.glb /data/jobs/*/r0/model.dxf'
+      - name: Logs on failure
+        if: failure()
+        run: $COMPOSE logs --tail 200
