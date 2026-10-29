@@ -1,0 +1,48 @@
+# Production stack: Caddy (front static files + /api reverse proxy) and the API.
+# Host paths and ports come from deploy/.env so the same file runs on the OCI VM and a laptop.
+#   docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+name: autobim                          # container/volume prefix (autobim-api-1, autobim_jobs)
+
+services:
+  api:
+    build:
+      context: ..
+      args:
+        EXTRAS: ${EXTRAS:-}            # real path: seg (onnxruntime etc., issue #5)
+    image: autobim-be:prod
+    restart: unless-stopped
+    # One worker only: the job store is in memory, a second worker would 404 on lookups.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+    environment:
+      AUTOBIM_WALL_SEGMENTER: ${AUTOBIM_WALL_SEGMENTER:-fake}
+      AUTOBIM_OPENING_DETECTOR: ${AUTOBIM_OPENING_DETECTOR:-fake}
+      # none on the real path: the fake reader scales every plan to 8,000 mm
+      AUTOBIM_DIMENSION_READER: ${AUTOBIM_DIMENSION_READER:-none}
+      AUTOBIM_SEG_BUNDLE: /models/current
+      AUTOBIM_SEG_THREADS: "2"
+      PYTHONPATH: /app:/models/current/pkg
+    volumes:
+      - jobs:/data/jobs
+      - ${MODELS_DIR:-/opt/autobim/models}:/models:ro
+    expose: ["8000"]
+    mem_limit: 6g
+
+  web:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [api]
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${FE_DIR:-/opt/autobim/fe}:/srv/fe:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  jobs: {}
+  caddy_data: {}
+  caddy_config: {}
