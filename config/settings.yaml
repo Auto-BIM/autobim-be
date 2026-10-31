@@ -1,6 +1,7 @@
 # Auto-BIM backend settings.
 # Override the file with AUTOBIM_CONFIG=/path/to/settings.yaml,
 # and individual model choices with AUTOBIM_WALL_SEGMENTER / AUTOBIM_OPENING_DETECTOR / AUTOBIM_DIMENSION_READER.
+# Upload limits: AUTOBIM_MAX_UPLOAD_MB / AUTOBIM_MAX_PIXELS.
 
 models:
   # fake | cubicasa
@@ -15,6 +16,12 @@ models:
 storage:
   # relative paths are resolved against the repo root. Override with AUTOBIM_DATA_DIR.
   data_dir: data/jobs
+
+limits:
+  # POST /api/jobs rejects larger uploads with 413. 1 MB = 1024 * 1024 bytes.
+  max_upload_mb: 30
+  # image width * height, judged from the header only
+  max_pixels: 40000000
 
 recognition:
   # detections below this confidence become review items

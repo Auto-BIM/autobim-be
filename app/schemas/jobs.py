@@ -176,3 +176,10 @@ class ErrorDetail(_Model):
 
 class ErrorResponse(_Model):
     detail: ErrorDetail
+
+
+class HealthResponse(_Model):
+    status: str = Field(description='Always "ok" while the server is up')
+    wall_segmenter: str = Field(description="Configured wall segmenter implementation")
+    opening_detector: str = Field(description="Configured opening detector implementation")
+    model: str = Field(description='Model bundle name (e.g. "seg-v1"), or "fake"')
