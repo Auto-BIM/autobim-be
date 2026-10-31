@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
+from PIL import Image
 
+from app.core.config import LimitsSettings
 from app.jobs.runner import run_job
 from app.jobs.store import JobRecord, JobStore
 from app.jobs.supplement import SupplementError, replay_supplements
@@ -51,6 +54,30 @@ def _source_type(upload: UploadFile) -> SourceType:
     raise _error(415, "unsupported_media_type", "upload an image (png/jpg/...) or a .dxf file")
 
 
+def _check_image(data: bytes, limits: LimitsSettings) -> None:
+    """Reject images over the pixel limit or that cannot be decoded, without decoding pixels.
+
+    `Image.open` reads only the header. `verify()` walks PNG chunks and checks CRCs, which
+    catches truncated PNGs; for other formats it checks nothing beyond the header.
+    """
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            pixels = img.width * img.height
+            if pixels > limits.max_pixels:
+                raise _image_too_large(f"{pixels} px", limits)
+            img.verify()
+    except Image.DecompressionBombError:  # Pillow refuses absurd headers before we can look
+        raise _image_too_large("a decompression bomb", limits) from None
+    except (OSError, SyntaxError, ValueError) as exc:  # includes UnidentifiedImageError
+        raise _error(
+            415, "unsupported_media_type", "cannot decode the image (corrupt or unsupported format)"
+        ) from exc
+
+
+def _image_too_large(size: str, limits: LimitsSettings) -> HTTPException:
+    return _error(413, "image_too_large", f"image is {size}; the limit is {limits.max_pixels} px")
+
+
 def _schedule(request: Request, background: BackgroundTasks, job_id: str) -> None:
     state = request.app.state
     background.add_task(run_job, state.store, job_id, state.models, state.settings)
@@ -60,7 +87,13 @@ def _schedule(request: Request, background: BackgroundTasks, job_id: str) -> Non
     "",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=Job,
-    responses={415: {"model": ErrorResponse, "description": "Unsupported file type"}},
+    responses={
+        413: {"model": ErrorResponse, "description": "File or image too large"},
+        415: {
+            "model": ErrorResponse,
+            "description": "Unsupported file type, or an image that cannot be decoded",
+        },
+    },
     summary="Create a conversion job from an uploaded floor plan (image or .dxf)",
 )
 async def create_job(
@@ -69,7 +102,14 @@ async def create_job(
     file: Annotated[UploadFile, File(description="Floor plan image (png/jpg/...) or .dxf")],
 ) -> Job:
     source_type = _source_type(file)
-    data = await file.read()
+    limits = request.app.state.settings.limits
+    data = await file.read(limits.max_upload_bytes + 1)  # never hold more than the limit
+    if len(data) > limits.max_upload_bytes:
+        raise _error(
+            413, "file_too_large", f"file is over the {limits.max_upload_mb} MB upload limit"
+        )
+    if source_type == SourceType.image:
+        _check_image(data, limits)
     job_input = JobInput(
         filename=file.filename or "upload", type=source_type, content_type=file.content_type
     )
