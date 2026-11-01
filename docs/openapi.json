@@ -80,6 +80,39 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "description": "Model bundle name (e.g. \"seg-v1\"), or \"fake\"",
+            "title": "Model",
+            "type": "string"
+          },
+          "opening_detector": {
+            "description": "Configured opening detector implementation",
+            "title": "Opening Detector",
+            "type": "string"
+          },
+          "status": {
+            "description": "Always \"ok\" while the server is up",
+            "title": "Status",
+            "type": "string"
+          },
+          "wall_segmenter": {
+            "description": "Configured wall segmenter implementation",
+            "title": "Wall Segmenter",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "wall_segmenter",
+          "opening_detector",
+          "model"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
       "Job": {
         "additionalProperties": false,
         "properties": {
@@ -1031,7 +1064,7 @@
   "info": {
     "description": "2D floor plan (image/DXF) -> Plan -> 3D (.glb) / per-wall .dxf / JSON",
     "title": "Auto-BIM API",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1059,6 +1092,16 @@
             },
             "description": "Successful Response"
           },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "File or image too large"
+          },
           "415": {
             "content": {
               "application/json": {
@@ -1067,7 +1110,7 @@
                 }
               }
             },
-            "description": "Unsupported file type"
+            "description": "Unsupported file type, or an image that cannot be decoded"
           },
           "422": {
             "content": {
@@ -1296,18 +1339,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "title": "Response Health Health Get",
-                  "type": "object"
+                  "$ref": "#/components/schemas/HealthResponse"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Liveness check",
+        "summary": "Liveness check and the configured models",
         "tags": [
           "meta"
         ]

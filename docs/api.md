@@ -8,14 +8,27 @@
 
 | 메서드 | 경로 | 성공 | 오류 | 설명 |
 |---|---|---|---|---|
-| POST | `/api/jobs` | 202 `Job` | 415, 422 | 평면도 업로드(`multipart/form-data`, 필드 `file`) → 작업 생성 |
+| POST | `/api/jobs` | 202 `Job` | 413, 415, 422 | 평면도 업로드(`multipart/form-data`, 필드 `file`) → 작업 생성 |
 | GET | `/api/jobs/{job_id}` | 200 `Job` | 404 | 상태, Plan, 파일 URL 조회 |
 | POST | `/api/jobs/{job_id}/supplement` | 202 `Job` | 400, 404, 409, 422 | 보충 입력 → 재생성, `revision` +1 |
 | GET | `/api/jobs/{job_id}/files/{kind}` | 200 파일 | 404, 409, 422 | `kind` = `dxf` \| `glb` \| `json` |
-| GET | `/health` | 200 | | `{"status": "ok"}` |
+| GET | `/health` | 200 `HealthResponse` | | 상태와 설정된 모델. [아래](#health) 참고 |
 
 입력 파일 종류는 확장자로 판별한다. `.dxf`이면 DXF 경로이고, png/jpg/jpeg/bmp/tif/tiff/webp(또는 `image/*`)이면 이미지 경로다.
 DXF 경로는 아직 구현되지 않아 작업이 `failed`(`not_implemented`)로 끝난다(이슈 #3).
+
+### 업로드 제한
+
+`POST /api/jobs`는 작업을 만들기 전에 업로드를 검사하고, 걸리면 작업을 만들지 않는다.
+
+| 검사 | 응답 | 상한(설정) | 환경변수 |
+|---|---|---|---|
+| 파일 바이트 | 413 `file_too_large` | `limits.max_upload_mb` (기본 30) | `AUTOBIM_MAX_UPLOAD_MB` |
+| 이미지 픽셀 수(폭 × 높이) | 413 `image_too_large` | `limits.max_pixels` (기본 40,000,000) | `AUTOBIM_MAX_PIXELS` |
+| 디코딩할 수 없는 이미지 | 415 `unsupported_media_type` | | |
+
+- 픽셀 수는 PIL로 이미지 헤더만 읽어 판단한다(전체를 디코딩하지 않는다).
+- 설정은 `config/settings.yaml`의 `limits:`에 있다.
 
 ## 작업 상태와 리비전
 
@@ -37,7 +50,7 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
 
 ## 오류 형식
 
-애플리케이션 오류(400/404/409/415):
+애플리케이션 오류(400/404/409/413/415):
 
 ```json
 { "detail": { "code": "job_not_found", "message": "job 'abc' not found" } }
@@ -49,13 +62,30 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
 | `job_busy` | 409 | 처리 중인 작업에 보충 입력 |
 | `no_plan` | 409 | 한 번도 성공하지 못한(Plan 없는) 작업에 보충 입력 |
 | `not_ready` | 409 | 성공한 리비전이 없어 결과 파일 없음 |
-| `unsupported_media_type` | 415 | 이미지나 .dxf가 아님 |
+| `file_too_large` | 413 | 업로드한 파일이 바이트 상한 초과 |
+| `image_too_large` | 413 | 이미지가 픽셀 상한 초과 |
+| `unsupported_media_type` | 415 | 이미지나 .dxf가 아님, 또는 디코딩할 수 없는 이미지 |
 | `unknown_element` | 400 | 보충 입력이 Plan에 없는 벽·개구부 ID를 참조 |
 | `invalid_supplement` | 400 | 보충 결과 Plan이 스키마 위반, 또는 적용할 수 없는 축척 |
 
 요청 본문 형식 오류(422)는 FastAPI 기본 형식(`{"detail": [ ... ]}`)을 따른다.
 
 `Job.error.code`(최신 리비전 실패 사유): `not_implemented`, `no_walls`, `scale_unresolvable`, `unknown_element`, `invalid_supplement`, `internal_error`.
+
+## /health
+
+```json
+{ "status": "ok", "wall_segmenter": "fake", "opening_detector": "fake", "model": "fake" }
+```
+
+**HealthResponse** — 값은 모두 문자열이고 항상 들어 있다.
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `status` | string | `"ok"` |
+| `wall_segmenter` | string | 설정된 벽 분할 구현 |
+| `opening_detector` | string | 설정된 개구부 검출 구현 |
+| `model` | string | 모델 이름. 번들을 쓰면 번들 이름(예: `seg-v1`), Fake면 `fake` |
 
 ## Job
 
