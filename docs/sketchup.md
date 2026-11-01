@@ -12,12 +12,12 @@
 
 ## 이 레포의 대응
 
-- `write_dxf(..., layer_per_wall=True)`: 벽마다 레이어 `A-WALL-<id>`. SketchUp에서 벽 단위로 잡을 수 있는 것은 Tag뿐이라서 쓴다. 기본값은 `False`(레이어 3개, 이슈 #14 기준).
-- `write_dxf(..., faces_3d=True)`: polyface 대신 `3DFACE`. 폴리페이스는 SketchUp 2025에서 면으로 잘 들어왔으므로 기본값은 `False`.
-- 두 옵션은 아직 API·설정에 연결하지 않았다(계약 변경이 필요해서 별도 PR 대상).
+- `app/export/ifc.py`의 `write_ifc(plan, meshes, path)`: 벽마다 `IfcWall`(`WALL_<id>`), 개구부마다 `IfcOpeningElement`(구멍) + `IfcDoor`/`IfcWindow`(`DOOR_<id>`/`WINDOW_<id>`). 벽 3D와 같은 접합부·개구부 범위를 쓰고 벽 부피가 `build_wall_meshes`와 일치함을 테스트한다. 아직 API·결과 파일 종류에는 연결하지 않았다(계약 변경, 별도 PR).
+- `.dxf`는 바꾸지 않았다. 벽마다 레이어(`A-WALL-<id>`)를 두는 방법은 레이어가 벽 수만큼 늘어 실무에서 거추장스럽고, SketchUp이 블록을 합치는 문제를 레이어로 우회할 뿐이라 채택하지 않았다. `3DFACE` 옵션도 폴리페이스가 잘 들어와서 넣지 않았다.
+- SketchUp에서 벽 단위 객체가 필요하면 `.ifc`를 쓰고, AutoCAD에서는 `.dxf`의 레이어(`A-WALL` 등)와 벽별 블록을 쓴다.
 
 ## 미확인
 
 - 이 레포가 만든 `.dxf` 자체(A-WALL/A-DOOR/A-WINDOW 레이어, 개구부 윤곽선)를 SketchUp에서 연 결과
-- `layer_per_wall=True` 파일을 SketchUp에서 열었을 때 Tag별 선택
+- 이 레포가 만든 `.ifc`를 SketchUp·AutoCAD(`IFCIMPORT`)에서 연 결과
 - SketchUp 종류(Pro 여부): IFC 가져오기가 되므로 Pro 이상으로 보이나 본인이 모르겠다고 답했다

@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=1.26",
     "pillow>=10.0",
     "ezdxf>=1.2",
+    "ifcopenshell>=0.8",
     "trimesh>=4.2",
 ]
 

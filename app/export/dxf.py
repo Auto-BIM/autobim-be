@@ -26,21 +26,7 @@ def opening_block_name(opening_id: str, type_: OpeningType) -> str:
     return f"{type_.value.upper()}_{opening_id}"
 
 
-def wall_layer_name(wall_id: str) -> str:
-    return f"{LAYER_WALL}-{wall_id}"
-
-
-def write_dxf(
-    plan: Plan,
-    meshes: dict[str, trimesh.Trimesh],
-    path: Path,
-    *,
-    layer_per_wall: bool = False,
-    faces_3d: bool = False,
-) -> None:
-    """layer_per_wall: SketchUp merges a DXF's blocks into one group, so only layers (tags) survive as
-    a per-wall handle; this puts each wall on its own layer `A-WALL-<id>`. faces_3d: write 3DFACE
-    instead of a polyface mesh, for importers that drop polyface."""
+def write_dxf(plan: Plan, meshes: dict[str, trimesh.Trimesh], path: Path) -> None:
     doc = ezdxf.new("R2010")
     doc.header["$INSUNITS"] = 4  # millimetres
     doc.layers.add(LAYER_WALL, color=7)
@@ -54,13 +40,8 @@ def write_dxf(
         block = doc.blocks.new(name)
         builder = MeshBuilder()
         builder.add_mesh(vertices=mesh.vertices.tolist(), faces=mesh.faces.tolist())
-        layer = LAYER_WALL
-        if layer_per_wall:
-            layer = wall_layer_name(wall_id)
-            doc.layers.add(layer, color=7)
-        render = builder.render_3dfaces if faces_3d else builder.render_polyface
-        render(block, dxfattribs={"layer": layer})
-        msp.add_blockref(name, (0, 0, 0), dxfattribs={"layer": layer})
+        builder.render_polyface(block, dxfattribs={"layer": LAYER_WALL})
+        msp.add_blockref(name, (0, 0, 0), dxfattribs={"layer": LAYER_WALL})
 
     # Openings: plan-view footprint (cut width x wall thickness) at the opening's sill height.
     # Same clamping as the 3D cut: inside the wall's solid, outside junction footprints, so a
