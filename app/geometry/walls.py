@@ -3,9 +3,10 @@
 Each wall is a box around its centerline (half thickness each side); door/window
 intervals are cut out, leaving the lintel above doors, and the lintel above plus the
 sill below windows.
-Junction handling (L/T extend/trim, design.md §5) is issue #2 — walls currently
-stop at their centerline endpoints, so corners both overlap (inner square) and leave a
-missing half-thickness square at the outer corner.
+Junctions (L/T/+ extend/trim, design.md §5) come from `junctions.wall_junctions`: a wall's
+solid runs from s = -ext_start to s = length + ext_end. Openings are clamped to the original
+centerline range (and to trimmed ends) and never cut into a junction's footprint
+(`junctions.wall_junctions` zones), so corners and branch roots stay solid.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 import trimesh
 
+from app.geometry.junctions import wall_junctions
 from app.schemas.plan import Opening, Plan, Wall
 
 
@@ -42,10 +44,32 @@ def _subtract(lo: float, hi: float, cuts: list[tuple[float, float]]) -> list[tup
     return out
 
 
-def wall_pieces(wall: Wall, openings: list[Opening]) -> list[Piece]:
+def opening_spans(
+    wall: Wall,
+    opening: Opening,
+    ext: tuple[float, float] = (0.0, 0.0),
+    zones: list[tuple[float, float]] | None = None,
+) -> list[tuple[float, float]]:
+    """Wall-local intervals the opening really cuts: its span clamped to the original centerline
+    range (and trimmed ends), minus junction zones (where other walls rest on this one).
+    An opening lying entirely inside those limits is not cut at all (3D) / not drawn (DXF block
+    stays empty): the Plan has no way to flag it."""
+    lo, hi = max(0.0, -ext[0]), min(wall.length, wall.length + ext[1])
+    a = min(max(opening.position - opening.width / 2, lo), hi)
+    b = min(max(opening.position + opening.width / 2, lo), hi)
+    return _subtract(a, b, zones or []) if b > a else []
+
+
+def wall_pieces(
+    wall: Wall,
+    openings: list[Opening],
+    ext: tuple[float, float] = (0.0, 0.0),
+    zones: list[tuple[float, float]] | None = None,
+) -> list[Piece]:
     length = wall.length
-    spans = [(o.position - o.width / 2, o.position + o.width / 2, o) for o in openings]
-    breaks = sorted({0.0, length} | {min(max(v, 0.0), length) for a, b, _ in spans for v in (a, b)})
+    lo, hi = -ext[0], length + ext[1]  # solid extent
+    spans = [(a, b, o) for o in openings for a, b in opening_spans(wall, o, ext, zones)]
+    breaks = sorted({lo, hi} | {v for a, b, _ in spans for v in (a, b)})
     pieces = []
     for s0, s1 in zip(breaks, breaks[1:]):
         if s1 - s0 <= 1e-6:
@@ -71,8 +95,9 @@ def _piece_mesh(wall: Wall, piece: Piece) -> trimesh.Trimesh:
 def build_wall_meshes(plan: Plan) -> dict[str, trimesh.Trimesh]:
     """Wall ID -> mesh in mm (Plan x/y, z up). Pieces are separate shells within one mesh."""
     meshes = {}
+    exts, zones = wall_junctions(plan.walls)
     for wall in plan.walls:
         openings = [o for o in plan.openings if o.wall_id == wall.id]
-        parts = [_piece_mesh(wall, p) for p in wall_pieces(wall, openings)]
+        parts = [_piece_mesh(wall, p) for p in wall_pieces(wall, openings, exts[wall.id], zones[wall.id])]
         meshes[wall.id] = trimesh.util.concatenate(parts)
     return meshes

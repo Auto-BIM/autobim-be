@@ -8,6 +8,8 @@ import ezdxf
 import trimesh
 from ezdxf.render import MeshBuilder
 
+from app.geometry.junctions import wall_junctions
+from app.geometry.walls import opening_spans
 from app.schemas.plan import OpeningType, Plan
 
 LAYER_WALL = "A-WALL"
@@ -41,25 +43,27 @@ def write_dxf(plan: Plan, meshes: dict[str, trimesh.Trimesh], path: Path) -> Non
         builder.render_polyface(block, dxfattribs={"layer": LAYER_WALL})
         msp.add_blockref(name, (0, 0, 0), dxfattribs={"layer": LAYER_WALL})
 
-    # Openings: plan-view footprint (width x wall thickness) at the opening's sill height.
+    # Openings: plan-view footprint (cut width x wall thickness) at the opening's sill height.
+    # Same clamping as the 3D cut: inside the wall's solid, outside junction footprints, so a
+    # footprint can be split in two or empty (the block is kept so IDs stay stable).
+    exts, zones = wall_junctions(plan.walls)
     for o in plan.openings:
         wall = plan.wall(o.wall_id)
         ux = (wall.end.x - wall.start.x) / wall.length
         uy = (wall.end.y - wall.start.y) / wall.length
         nx, ny = -uy, ux
-        cx = wall.start.x + ux * o.position
-        cy = wall.start.y + uy * o.position
-        hw, ht = o.width / 2, wall.thickness / 2
-        corners = [
-            (cx + sa * hw * ux + sb * ht * nx, cy + sa * hw * uy + sb * ht * ny)
-            for sa, sb in ((-1, -1), (1, -1), (1, 1), (-1, 1))
-        ]
+        ht = wall.thickness / 2
         layer = _OPENING_LAYER[o.type]
         name = opening_block_name(o.id, o.type)
         block = doc.blocks.new(name)
-        block.add_lwpolyline(
-            corners, close=True, dxfattribs={"layer": layer, "elevation": o.sill_height}
-        )
+        for s0, s1 in opening_spans(wall, o, exts[wall.id], zones[wall.id]):
+            corners = [
+                (wall.start.x + ux * s + nx * sb * ht, wall.start.y + uy * s + ny * sb * ht)
+                for s, sb in ((s0, -1), (s1, -1), (s1, 1), (s0, 1))
+            ]
+            block.add_lwpolyline(
+                corners, close=True, dxfattribs={"layer": layer, "elevation": o.sill_height}
+            )
         msp.add_blockref(name, (0, 0, 0), dxfattribs={"layer": layer})
 
     doc.saveas(path)
