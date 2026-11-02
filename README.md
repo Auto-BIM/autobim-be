@@ -34,6 +34,23 @@ docker compose up --build
 # http://localhost:8000/docs  (작업 파일은 named volume "jobs"에 저장)
 ```
 
+## 실제 모델(`seg`)
+
+기본은 Fake 모델이라 번들 없이 돌아간다. 실제 모델은 모델 레포(`autobim-model`)가 만든 **모델 번들**(`model.onnx` + `model.json` + `pkg/autobim_seg/`)을 읽는다. 번들은 커밋하지 않는다. 번들을 받고 바꾸는 방법은 [docs/deploy-oci.md](docs/deploy-oci.md) §7과 모델 레포 `docs/MODEL_SPEC.md` §10, 번들 형식은 [docs/project/SYSTEM_SPEC.md](docs/project/SYSTEM_SPEC.md) §3.1~3.3을 본다.
+
+```bash
+pip install -e '.[seg]'                      # onnxruntime, opencv-python-headless
+export PYTHONPATH=<번들>/pkg                 # 번들과 짝인 autobim_seg를 import
+export AUTOBIM_SEG_BUNDLE=<번들>
+export AUTOBIM_WALL_SEGMENTER=seg AUTOBIM_OPENING_DETECTOR=seg AUTOBIM_DIMENSION_READER=none
+uvicorn app.main:app
+
+docker build --build-arg EXTRAS=seg .         # 이미지에 seg 의존성(requirements-seg.lock)을 넣는다
+pytest -m model                               # 실제 번들 테스트. AUTOBIM_SEG_BUNDLE이 없으면 건너뛴다
+```
+
+번들 폴더가 없거나 `model.json`의 `autobim_seg_version`이 `autobim_seg`와 다르면 앱이 시작하지 않는다. `/health`의 `model`에는 번들 이름(`model.json`의 `name`)이 나온다.
+
 ## 사용 예
 
 ```bash
@@ -62,9 +79,11 @@ curl -s -o plan.json http://127.0.0.1:8000/api/jobs/<JOB>/files/json
 | 환경변수 | 기본값 | 값 |
 |---|---|---|
 | `AUTOBIM_CONFIG` | `config/settings.yaml` | 설정 파일 경로 |
-| `AUTOBIM_WALL_SEGMENTER` | `fake` | `fake` · `cubicasa` |
-| `AUTOBIM_OPENING_DETECTOR` | `fake` | `fake` · `cubicasa` |
+| `AUTOBIM_WALL_SEGMENTER` | `fake` | `fake` · `seg` |
+| `AUTOBIM_OPENING_DETECTOR` | `fake` | `fake` · `seg` |
 | `AUTOBIM_DIMENSION_READER` | `fake` | `fake` · `none` |
+| `AUTOBIM_SEG_BUNDLE` | 없음 | `seg`가 읽을 모델 번들 폴더 |
+| `AUTOBIM_SEG_THREADS` | `2` | `seg`의 ONNX Runtime 스레드 수 |
 | `AUTOBIM_DATA_DIR` | `data/jobs` | 작업 파일 저장 위치 |
 
 ## 테스트

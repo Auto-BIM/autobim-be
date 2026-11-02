@@ -1,17 +1,21 @@
 # Auto-BIM backend settings.
 # Override the file with AUTOBIM_CONFIG=/path/to/settings.yaml,
 # and individual model choices with AUTOBIM_WALL_SEGMENTER / AUTOBIM_OPENING_DETECTOR / AUTOBIM_DIMENSION_READER.
+# The seg model's bundle folder and threads: AUTOBIM_SEG_BUNDLE / AUTOBIM_SEG_THREADS.
 # Upload limits: AUTOBIM_MAX_UPLOAD_MB / AUTOBIM_MAX_PIXELS.
 
 models:
-  # fake | cubicasa
+  # fake | seg
   wall_segmenter: fake
-  # fake | cubicasa
+  # fake | seg   (when both are `seg` they share one model instance)
   opening_detector: fake
   # fake | none
   dimension_reader: fake
-  cubicasa:
-    weights_path: null
+  # Used when wall_segmenter / opening_detector is `seg`. Needs the `seg` extra (pip install .[seg]).
+  seg:
+    # model bundle folder (model.onnx + model.json + pkg/autobim_seg); put <bundle>/pkg on PYTHONPATH
+    bundle_dir: null
+    threads: 2
 
 storage:
   # relative paths are resolved against the repo root. Override with AUTOBIM_DATA_DIR.

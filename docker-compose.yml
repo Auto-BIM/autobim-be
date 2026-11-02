@@ -5,7 +5,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # fake | cubicasa — see config/settings.yaml
+      # fake | seg — see config/settings.yaml
       AUTOBIM_WALL_SEGMENTER: ${AUTOBIM_WALL_SEGMENTER:-fake}
       AUTOBIM_OPENING_DETECTOR: ${AUTOBIM_OPENING_DETECTOR:-fake}
       AUTOBIM_DIMENSION_READER: ${AUTOBIM_DIMENSION_READER:-fake}
