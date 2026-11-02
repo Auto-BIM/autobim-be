@@ -27,11 +27,11 @@ POST /api/jobs ─▶ app/jobs/runner.py
 | `app/models/base.py` | **계약**: 모델 인터페이스 |
 | `app/api/` | 라우터(경로·형식은 계약) |
 | `app/jobs/` | 작업 저장소(인메모리 + 로컬 파일), 실행기, 보충 입력 적용 |
-| `app/models/` | Fake / CubiCasa 어댑터(자리만) / 레지스트리. 계획: `seg`(#5), `replay`(#11 (BE-N2)) |
+| `app/models/` | Fake / `seg`(`autobim_seg` 번들) 어댑터 / 레지스트리. 계획: `replay`(#11 (BE-N2)) |
 | `app/preprocess/`, `app/recognition/` | 이미지 경로 |
 | `app/dxf_input/` | DXF 경로 |
 | `app/geometry/`, `app/export/` | 3D 기하, 파일 출력 |
-| `config/settings.yaml` | 모델 구현 선택(`fake`/`cubicasa`/`none`), 저장 경로 |
+| `config/settings.yaml` | 모델 구현 선택(`fake`/`seg`/`none`), 저장 경로 |
 | `scripts/export_openapi.py` | `docs/openapi.json` 생성/검사 |
 
 핵심 규약: Plan은 mm, y축 위쪽. `opening.position`은 벽 시작점에서 개구부 중심까지의 거리. glb는 m, Y-up. 기존 요소 ID는 보충 입력 전후로 절대 바뀌지 않는다.

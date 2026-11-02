@@ -48,6 +48,7 @@ numpy==2.4.6
     #   autobim-backend (pyproject.toml)
     #   ezdxf
     #   ifcopenshell
+    #   scipy
     #   shapely
     #   trimesh
 opentelemetry-api==1.45.1
@@ -83,6 +84,8 @@ pyyaml==6.0.3
     #   autobim-backend (pyproject.toml)
     #   uvicorn
 ruff==0.17.2
+    # via autobim-backend (pyproject.toml)
+scipy==1.17.1
     # via autobim-backend (pyproject.toml)
 shapely==2.2.0
     # via ifcopenshell

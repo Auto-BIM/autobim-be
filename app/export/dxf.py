@@ -8,7 +8,7 @@ import ezdxf
 import trimesh
 from ezdxf.render import MeshBuilder
 
-from app.geometry.junctions import wall_junctions
+from app.geometry.junctions import unit, wall_junctions
 from app.geometry.walls import opening_spans
 from app.schemas.plan import OpeningType, Plan
 
@@ -26,7 +26,7 @@ def opening_block_name(opening_id: str, type_: OpeningType) -> str:
     return f"{type_.value.upper()}_{opening_id}"
 
 
-def write_dxf(plan: Plan, meshes: dict[str, trimesh.Trimesh], path: Path) -> None:
+def write_dxf(plan: Plan, meshes: dict[str, trimesh.Trimesh], path: Path, junctions=None) -> None:
     doc = ezdxf.new("R2010")
     doc.header["$INSUNITS"] = 4  # millimetres
     doc.layers.add(LAYER_WALL, color=7)
@@ -46,11 +46,10 @@ def write_dxf(plan: Plan, meshes: dict[str, trimesh.Trimesh], path: Path) -> Non
     # Openings: plan-view footprint (cut width x wall thickness) at the opening's sill height.
     # Same clamping as the 3D cut: inside the wall's solid, outside junction footprints, so a
     # footprint can be split in two or empty (the block is kept so IDs stay stable).
-    exts, zones = wall_junctions(plan.walls)
+    exts, zones = junctions or wall_junctions(plan.walls)
     for o in plan.openings:
         wall = plan.wall(o.wall_id)
-        ux = (wall.end.x - wall.start.x) / wall.length
-        uy = (wall.end.y - wall.start.y) / wall.length
+        ux, uy = unit(wall)
         nx, ny = -uy, ux
         ht = wall.thickness / 2
         layer = _OPENING_LAYER[o.type]

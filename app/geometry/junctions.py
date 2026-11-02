@@ -2,7 +2,8 @@
 other walls rest on a wall.
 
 A junction is a wall end whose centerline point lies on another wall's centerline (1 mm).
-Deterministic: walls are ordered by thickness (thick first), then ID.
+Deterministic: walls are ordered by thickness (thick first), then ID length, then ID (w2 < w10).
+"Within 1 mm" is always the straight-line distance: between two ends, and from an end to a centerline.
 - End on the interior of another wall (T, +): trimmed until it no longer overlaps that wall.
 - Ends meeting at one point (L, corners, 3+ walls): the first wall is the master and is extended
   backwards over the node so its square end reaches the outer corner of the others (half their
@@ -19,7 +20,9 @@ Deterministic: walls are ordered by thickness (thick first), then ID.
   300 mm stub in an acute wedge) leaves a MIN_LEN sliver at its far tip that touches nothing,
   but it no longer keeps its neighbours away.
 - Zones: wall-local intervals (end-face corners projected on the wall's axis) where the end face
-  of a later wall touches it. Openings never cut there. At oblique joints that is only part of
+  of a later wall touches it. Openings never cut there. An opening that spans a zone is cut
+  around it, so 3D and DXF show it split while plan.json keeps its width (a 900 mm door over a T
+  junction: 390 + 390 mm). At oblique joints that is only part of
   the wedge gap; a wall touching only another wall's end keeps a stretch of that end.
 """
 
@@ -36,18 +39,20 @@ _MAX_GROW = 3.0  # acute corners: the master's extension is capped at this many 
 
 
 def _key(w: Wall) -> tuple[float, int, str]:
-    return (-w.thickness, len(w.id), w.id)  # thick first; w2 < w10
+    return (-w.thickness, len(w.id), w.id)  # thick first; shorter IDs first (w2 < w10)
 
 
-def _unit(w: Wall) -> tuple[float, float]:
+def unit(w: Wall) -> tuple[float, float]:
+    """Unit vector along a wall's centerline, start -> end."""
     return (w.end.x - w.start.x) / w.length, (w.end.y - w.start.y) / w.length
 
 
-def _on_segment(p: tuple[float, float], w: Wall) -> bool:
-    ux, uy = _unit(w)
+def _touches(p: tuple[float, float], w: Wall) -> bool:
+    """p lies within TOL (straight-line distance, like the endpoint clustering) of w's centerline."""
+    ux, uy = unit(w)
     dx, dy = p[0] - w.start.x, p[1] - w.start.y
-    s, d = dx * ux + dy * uy, abs(-dx * uy + dy * ux)
-    return d <= TOL and -TOL <= s <= w.length + TOL
+    s = min(max(dx * ux + dy * uy, 0.0), w.length)
+    return math.hypot(dx - ux * s, dy - uy * s) <= TOL
 
 
 def _angle(d: tuple[float, float], master_dir: tuple[float, float]) -> tuple[float, float]:
@@ -107,13 +112,13 @@ def wall_junctions(
             clusters.append([e])
 
     def outward(w: Wall, i: int) -> tuple[float, float]:
-        ux, uy = _unit(w)
+        ux, uy = unit(w)
         return (ux, uy) if i == 0 else (-ux, -uy)
 
     nodes = []  # (cluster, through walls)
     for c in clusters:
         member_ids = {w.id for w, _, _ in c}
-        through = [b for b in ordered if b.id not in member_ids and _on_segment(c[0][2], b)]
+        through = [b for b in ordered if b.id not in member_ids and _touches(c[0][2], b)]
         nodes.append((c, through))
 
     # Pass 1: the master of every plain corner grows over the node (depends on angles only).
@@ -141,7 +146,7 @@ def wall_junctions(
                 continue
             d, trim = outward(w, i), 0.0
             for b in through:
-                bx, by = _unit(b)
+                bx, by = unit(b)
                 s0 = (c[0][2][0] - b.start.x) * bx + (c[0][2][1] - b.start.y) * by
                 lo = -(s0 + max(ext[b.id][0], 0.0))
                 hi = b.length + max(ext[b.id][1], 0.0) - s0
@@ -167,7 +172,7 @@ def wall_junctions(
     # projected on that wall's axis. Openings must not cut there.
     def rest(b: Wall, w: Wall, i: int, p) -> list[float]:
         """Projections on b's axis of w's end-face corners, if that face touches b's solid."""
-        bx, by = _unit(b)
+        bx, by = unit(b)
         d, k, h = outward(w, i), -out[w.id][i], w.thickness / 2
         loc = []
         for sgn in (-1, 1):

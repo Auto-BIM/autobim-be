@@ -7,7 +7,6 @@ from dataclasses import dataclass
 
 from app.core.config import ModelSettings
 from app.models.base import DimensionReader, OpeningDetector, WallSegmenter
-from app.models.cubicasa import CubiCasaOpeningDetector, CubiCasaWallSegmenter
 from app.models.fake import (
     FakeDimensionReader,
     FakeOpeningDetector,
@@ -15,17 +14,30 @@ from app.models.fake import (
     NullDimensionReader,
 )
 
-WALL_SEGMENTERS: dict[str, Callable[[ModelSettings], WallSegmenter]] = {
-    "fake": lambda s: FakeWallSegmenter(),
-    "cubicasa": lambda s: CubiCasaWallSegmenter(s.cubicasa.weights_path),
+# Factories get the settings and a per-build cache (see `_shared_seg`).
+Cache = dict[str, object]
+
+
+def _shared_seg(s: ModelSettings, cache: Cache):
+    """One `SegModel` per `build_models` call, shared by every role set to `seg`."""
+    if "seg" not in cache:
+        from app.models.seg import SegModel  # lazy: only `seg` needs autobim_seg
+
+        cache["seg"] = SegModel(s.seg.bundle_dir, s.seg.threads)
+    return cache["seg"]
+
+
+WALL_SEGMENTERS: dict[str, Callable[[ModelSettings, Cache], WallSegmenter]] = {
+    "fake": lambda s, c: FakeWallSegmenter(),
+    "seg": _shared_seg,
 }
-OPENING_DETECTORS: dict[str, Callable[[ModelSettings], OpeningDetector]] = {
-    "fake": lambda s: FakeOpeningDetector(),
-    "cubicasa": lambda s: CubiCasaOpeningDetector(s.cubicasa.weights_path),
+OPENING_DETECTORS: dict[str, Callable[[ModelSettings, Cache], OpeningDetector]] = {
+    "fake": lambda s, c: FakeOpeningDetector(),
+    "seg": _shared_seg,
 }
-DIMENSION_READERS: dict[str, Callable[[ModelSettings], DimensionReader]] = {
-    "fake": lambda s: FakeDimensionReader(),
-    "none": lambda s: NullDimensionReader(),
+DIMENSION_READERS: dict[str, Callable[[ModelSettings, Cache], DimensionReader]] = {
+    "fake": lambda s, c: FakeDimensionReader(),
+    "none": lambda s, c: NullDimensionReader(),
 }
 
 
@@ -36,21 +48,24 @@ class Models:
     dimension_reader: DimensionReader
 
 
-def _pick(table: dict, name: str, role: str, settings: ModelSettings):
+def _pick(table: dict, name: str, role: str, settings: ModelSettings, cache: Cache):
     try:
         factory = table[name]
     except KeyError:
         raise ValueError(f"unknown {role} {name!r}; choose one of {sorted(table)}") from None
-    return factory(settings)
+    return factory(settings, cache)
 
 
 def build_models(settings: ModelSettings) -> Models:
+    cache: Cache = {}
     return Models(
-        wall_segmenter=_pick(WALL_SEGMENTERS, settings.wall_segmenter, "wall_segmenter", settings),
+        wall_segmenter=_pick(
+            WALL_SEGMENTERS, settings.wall_segmenter, "wall_segmenter", settings, cache
+        ),
         opening_detector=_pick(
-            OPENING_DETECTORS, settings.opening_detector, "opening_detector", settings
+            OPENING_DETECTORS, settings.opening_detector, "opening_detector", settings, cache
         ),
         dimension_reader=_pick(
-            DIMENSION_READERS, settings.dimension_reader, "dimension_reader", settings
+            DIMENSION_READERS, settings.dimension_reader, "dimension_reader", settings, cache
         ),
     )

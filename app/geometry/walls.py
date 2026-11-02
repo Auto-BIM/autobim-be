@@ -16,7 +16,7 @@ from dataclasses import dataclass
 import numpy as np
 import trimesh
 
-from app.geometry.junctions import wall_junctions
+from app.geometry.junctions import unit, wall_junctions
 from app.schemas.plan import Opening, Plan, Wall
 
 
@@ -57,7 +57,7 @@ def opening_spans(
     lo, hi = max(0.0, -ext[0]), min(wall.length, wall.length + ext[1])
     a = min(max(opening.position - opening.width / 2, lo), hi)
     b = min(max(opening.position + opening.width / 2, lo), hi)
-    return _subtract(a, b, zones or []) if b > a else []
+    return _subtract(a, b, zones or [])
 
 
 def wall_pieces(
@@ -82,7 +82,7 @@ def wall_pieces(
 
 def _piece_mesh(wall: Wall, piece: Piece) -> trimesh.Trimesh:
     start = np.array([wall.start.x, wall.start.y, 0.0])
-    u = np.array([wall.end.x - wall.start.x, wall.end.y - wall.start.y, 0.0]) / wall.length
+    u = np.array([*unit(wall), 0.0])
     n = np.array([-u[1], u[0], 0.0])
     z = np.array([0.0, 0.0, 1.0])
     transform = np.eye(4)
@@ -92,10 +92,10 @@ def _piece_mesh(wall: Wall, piece: Piece) -> trimesh.Trimesh:
     return trimesh.creation.box(extents=extents, transform=transform)
 
 
-def build_wall_meshes(plan: Plan) -> dict[str, trimesh.Trimesh]:
+def build_wall_meshes(plan: Plan, junctions=None) -> dict[str, trimesh.Trimesh]:
     """Wall ID -> mesh in mm (Plan x/y, z up). Pieces are separate shells within one mesh."""
     meshes = {}
-    exts, zones = wall_junctions(plan.walls)
+    exts, zones = junctions or wall_junctions(plan.walls)  # callers may share one computation
     for wall in plan.walls:
         openings = [o for o in plan.openings if o.wall_id == wall.id]
         parts = [_piece_mesh(wall, p) for p in wall_pieces(wall, openings, exts[wall.id], zones[wall.id])]
