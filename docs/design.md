@@ -106,7 +106,7 @@ Plan (mm 단위 중간 표현, JSON)  ── 확인 필요 요소 → 사용자 
 | `app/models/base.py` | 모델 인터페이스 | **계약** |
 | `app/api/` | FastAPI 라우터 | 경로·형식은 계약 |
 | `app/jobs/` | 작업 저장소·실행기 | |
-| `app/models/` | Fake / CubiCasa 어댑터 / 레지스트리 | |
+| `app/models/` | Fake / `seg` 어댑터 / 레지스트리 | |
 | `app/preprocess/` | 이미지 전처리 | |
 | `app/recognition/` | 후처리(마스크→Plan) | |
 | `app/dxf_input/` | DXF 입력 경로 | |
