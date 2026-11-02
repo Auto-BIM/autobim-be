@@ -326,14 +326,37 @@ def test_default_app_does_not_import_heavy_modules():
 # --- real bundle: opt in with AUTOBIM_SEG_BUNDLE and `pytest -m model` ---------------------------
 
 
+def _drawn_plan(width=1200, height=1000, wall=12):
+    """A white sheet with a thick black rectangle (outer walls) and a gap in the top wall.
+    Returns (RGB image, boolean ground-truth wall mask, gap box (x0, y0, x1, y1))."""
+    from PIL import Image, ImageDraw
+
+    x0, y0, x1, y1 = width // 5, height // 5, width * 4 // 5, height * 4 // 5
+    gap = ((x0 + x1) // 2 - wall * 2, y0, (x0 + x1) // 2 + wall * 2, y0 + wall)
+    image, truth = Image.new("RGB", (width, height), "white"), Image.new("L", (width, height), 0)
+    for canvas, ink, paper in ((image, (0, 0, 0), (255, 255, 255)), (truth, 1, 0)):
+        draw = ImageDraw.Draw(canvas)
+        draw.rectangle([x0, y0, x1, y1], outline=ink, width=wall)
+        draw.rectangle([gap[0], gap[1] - 2, gap[2], gap[3] + 2], fill=paper)
+    return np.asarray(image), np.asarray(truth).astype(bool), gap
+
+
 @pytest.mark.model
 @pytest.mark.skipif(not os.environ.get("AUTOBIM_SEG_BUNDLE"), reason="AUTOBIM_SEG_BUNDLE not set")
 def test_real_bundle():
     pytest.importorskip("onnxruntime")
     model = SegModel(os.environ["AUTOBIM_SEG_BUNDLE"], threads=2)
-    image = np.full((256, 256, 3), 255, np.uint8)
+    # A blank sheet would be skipped tile by tile and never reach ONNX; the drawn walls make
+    # sure the network really runs.
+    image, truth, gap = _drawn_plan()
     wall = model.segment(image)
+    assert model._seg.last_stats["tiles_run"] >= 1
     assert wall.mask.shape == image.shape[:2] and wall.mask.dtype == bool
     assert 0.0 <= wall.confidence <= 1.0
     assert all(0.0 <= d.confidence <= 1.0 for d in model.detect(image))
     assert isinstance(model.model_name, str) and model.model_name
+
+    iou = (wall.mask & truth).sum() / (wall.mask | truth).sum()
+    assert iou >= 0.5, f"wall IoU {iou:.3f}"
+    x0, y0, x1, y1 = gap  # the opening in the top wall stays open
+    assert wall.mask[y0:y1, x0:x1].mean() < 0.5
