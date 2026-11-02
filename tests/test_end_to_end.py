@@ -41,3 +41,13 @@ def test_fake_floor_plan_to_glb_and_dxf(client, png_bytes, tmp_path):
     doors = [e for e in inserts if e.dxf.layer == "A-DOOR"]
     windows = [e for e in inserts if e.dxf.layer == "A-WINDOW"]
     assert (len(doors), len(windows)) == (3, 2)
+
+
+def test_every_wall_mesh_is_watertight_and_outline_exact(client, png_bytes):
+    job_id = client.post("/api/jobs", files={"file": ("p.png", png_bytes, "image/png")}).json()["id"]
+    scene = trimesh.load(
+        io.BytesIO(client.get(f"/api/jobs/{job_id}/files/glb").content), file_type="glb"
+    )
+    assert all(g.is_watertight for g in scene.geometry.values())
+    (x0, _, z0), (x1, _, z1) = scene.bounds  # outer faces of the exterior walls, metres
+    assert (x1 - x0, z1 - z0) == pytest.approx((8.2, 5.2), abs=1e-4)
