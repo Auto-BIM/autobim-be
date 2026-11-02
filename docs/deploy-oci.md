@@ -353,3 +353,47 @@ open http://localhost:8080
 | `job_not_found` | 컨테이너가 재시작됨(메모리 저장소) | `docker compose ps`의 시작 시각 |
 | 메모리 부족·느림 | 큰 이미지, 동시 작업 | `docker stats`, 픽셀 상한 |
 | HTTPS 인증서 실패 | DNS A 레코드, 80 포트 | `logs web` |
+
+## 13. 배포 기록 · 프론트 연결 (2026-11-02, G2)
+
+### 지금 떠 있는 것
+
+| 항목 | 값 |
+|---|---|
+| 코드 | `develop` `a786c5d` (#20 seg 어댑터, #21·#25 인식 v1) |
+| 모델 | `/opt/autobim/models/current -> seg-v1`, `SHA256SUMS` 검사 통과 |
+| 설정 | `deploy/.env`: `EXTRAS=seg`, 벽 분할·개구부 검출 `seg`, 치수 리더 `none` (`.env`는 커밋하지 않는다) |
+| 확인 | `/health` → `{"wall_segmenter":"seg","opening_detector":"seg","model":"seg-v1"}`, `smoke.sh` 통과 |
+| 접속 | HTTP `:8080`(Caddy). 80·443은 같은 호스트의 다른 서비스가 쓰고 있어 `deploy/.env`의 `HTTP_PORT=8080`, `HTTPS_PORT=8443`으로 비켰다 |
+| 측정 | 실도면 11장(tune 5장 포함) 모두 `succeeded`, 3.2~19.3초, 최대 1.7 GiB. [SYSTEM_SPEC §5.3](project/SYSTEM_SPEC.md) |
+| 알려진 인식 문제 | [이슈 #27](https://github.com/Auto-BIM/autobim-be/issues/27) |
+
+이 호스트는 다른 서비스와 공유한다. 포트 충돌에 주의한다.
+
+### 응답 방식
+
+요청 한 번으로 DXF가 오지 않는다.
+
+1. `POST /api/jobs` (`multipart`, 필드 `file`) → `202`, JSON(작업 `id`)
+2. `GET /api/jobs/{id}` 폴링 → `status`가 `succeeded`(또는 `failed`)가 될 때까지. 도면 크기에 따라 몇 초~수십 초
+3. `GET /api/jobs/{id}/files/{glb|dxf|json}` → 파일. 작업이 끝나기 전이면 `409 not_ready`
+
+한 번에 확인하려면 `deploy/smoke.sh http://localhost:8080 <이미지>`.
+
+### 프론트가 붙으려면 (CORS 없음)
+
+백엔드에 CORS 설정이 없다. 설계가 "Caddy 하나가 프론트와 `/api`를 같은 출처로 제공"([DECISIONS P-05](project/DECISIONS.md))이기 때문이다. 그래서 API 주소만 넘기면 되는 것은 아니다.
+
+| 방법 | 되는가 | 비고 |
+|---|---|---|
+| 프론트를 이 서버에 올림(§8) | O | 같은 출처라 설정 불필요. 시연 구성 |
+| 프론트 개발 서버 프록시(`/api` → 이 서버 `:8080`) | O | Vite `server.proxy` 등. 브라우저는 같은 출처로 본다 |
+| 다른 주소에서 브라우저가 직접 호출 | **X** | CORS 헤더가 없어 막힌다. 필요하면 계약이 아닌 설정 PR로 `CORSMiddleware` 추가 |
+| HTTPS 페이지에서 `http://…:8080` 호출 | **X** | 혼합 콘텐츠. 지금은 HTTP만 연다(O-04 도메인·HTTPS 미결) |
+
+그 밖에 알아 둘 것:
+- `/docs`와 `/openapi.json`은 Caddy에서 닫혀 있다. 프론트는 레포의 `docs/openapi.json`과 [api.md](api.md)를 본다.
+- 업로드 상한 30 MB(Caddy). 인증 없음.
+- 컨테이너를 재시작하면 작업이 사라져 이전 `id`가 404가 된다(#4). 시연 중에는 재시작하지 않는다(§9).
+- Fake 모델이 아닌 실제 모델이라 결과는 도면마다 다르다. 알려진 오류는 #27.
+
