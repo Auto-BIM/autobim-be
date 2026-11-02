@@ -246,9 +246,9 @@ def remove_duplicate_walls(walls: list[PixelWall], p: RecognitionSettings) -> li
                     o.center + o.thickness / 2,
                 )
                 along = overlap(w.a, w.b, o.a, o.b)
-                if across < ratio * min(w.thickness, o.thickness) or across <= 0:
+                if across < ratio * min(w.thickness, o.thickness):
                     continue
-                if along < ratio * min(w.length, o.length) or along <= 0:
+                if along < ratio * min(w.length, o.length):
                     continue
                 keep, drop = (w, o) if w.thickness * w.length >= o.thickness * o.length else (o, w)
                 keep.a, keep.b = min(keep.a, drop.a), max(keep.b, drop.b)
