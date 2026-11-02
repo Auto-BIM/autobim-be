@@ -93,13 +93,20 @@ def _nearest(walls: list[PixelWall], index: int, det: OpeningDetection) -> Pixel
 
 
 def _clear_of_crossing_walls(op: PixelOpening, walls: list[PixelWall]) -> None:
-    """Keep the cut inside the clear span between the walls that cross this one."""
+    """Keep the cut out of the thickness of the walls that cross this one.
+
+    An end on a face counts as inside. A box that lies wholly within a crossing wall has no
+    clear span to be cut back to: it keeps the interval it was detected with.
+    """
     w = walls[op.wall_index]
     for o in walls:
         if o.horizontal == w.horizontal or not (o.a - 1 <= w.center <= o.b + 1):
             continue
         face_lo, face_hi = o.center - o.thickness / 2, o.center + o.thickness / 2
-        if face_lo < op.s0 < face_hi:
-            op.s0 = face_hi
-        if face_lo < op.s1 < face_hi:
-            op.s1 = face_lo
+        s0, s1 = op.s0, op.s1
+        if face_lo <= s0 < face_hi:
+            s0 = face_hi
+        if face_lo < s1 <= face_hi:
+            s1 = face_lo
+        if s1 > s0:
+            op.s0, op.s1 = s0, s1

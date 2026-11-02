@@ -13,9 +13,10 @@ from app.core.config import ModelSettings, RecognitionSettings, load_settings
 from app.main import create_app
 from app.models.registry import build_models
 from app.recognition import recognize as recognize_module
+from app.recognition.openings import attach_openings
 from app.recognition.pipeline import image_to_plan
 from app.recognition.recognize import recognize
-from app.recognition.walls import PixelWall, remove_duplicate_walls
+from app.recognition.walls import PixelWall, remove_duplicate_walls, snap_junctions
 from app.schemas.jobs import ScaleHint
 from app.schemas.plan import ReviewReason, ScaleSource, WallKind
 from tests.synthetic_plans import (
@@ -197,7 +198,13 @@ def test_clutter_does_not_change_the_plan(seed):
     clean = image_to_plan(IMG, models_for(mask, boxes))
     cluttered = image_to_plan(IMG, models_for(with_outside_clutter(mask), boxes))
     assert cluttered.scale.mm_per_px == pytest.approx(clean.scale.mm_per_px)
-    assert [r.reason for r in cluttered.review_items] == [r.reason for r in clean.review_items]
+    # the one difference: a lot of wall was dropped as outside the building, and it says so
+    assert [r.reason for r in cluttered.review_items] == [
+        *(r.reason for r in clean.review_items),
+        ReviewReason.other,
+    ]
+    dropped = cluttered.review_items[-1]
+    assert dropped.element_id == "plan" and "건물 밖으로 보고 제외한 벽 영역" in dropped.message
     assert len(cluttered.walls) == len(clean.walls) == 8
     assert [o.wall_id for o in cluttered.openings] == [o.wall_id for o in clean.openings]
 
@@ -217,6 +224,24 @@ def test_a_wall_joined_to_the_building_only_by_door_boxes_is_kept():
     r = recognize(mask, boxes)
     assert not r.outside_walls
     assert any(not w.horizontal and w.center == 50 for w in r.walls), r.walls
+
+
+def test_a_small_stray_wall_is_dropped_without_a_review_item():
+    mask, boxes, _ = l_shaped(noise=False)
+    draw_wall(mask, 923, 20, 923, 200, 14)
+    assert 0 < recognize(mask, boxes).outside_wall_ratio < 0.05
+    plan = _synthetic_plan(mask, boxes)
+    assert [r.reason for r in plan.review_items] == [ReviewReason.low_confidence]  # only o4
+
+
+def test_dropped_wall_share_is_measured_on_all_wall_pixels():
+    mask, boxes, _ = l_shaped(noise=False)
+    clutter = with_outside_clutter(mask)
+    ratio = recognize(clutter, boxes).outside_wall_ratio
+    assert ratio == pytest.approx(
+        1 - mask.sum() / clutter.sum(), abs=0.02
+    )  # the clutter is everything the clean flat does not have
+    assert recognize(mask, boxes).outside_wall_ratio == 0.0
 
 
 def test_partition_inside_the_building_is_kept_even_when_it_touches_nothing():
@@ -427,3 +452,61 @@ def test_debug_overlay_marks_walls_openings_and_review_items(fake_plan):
     assert out.size == image.size and out.getpixel((100, 98)) != (255, 255, 255)
     colors = {c for _, c in out.getcolors(maxcolors=1 << 20)}
     assert {(255, 0, 0), (0, 0, 255), (0, 128, 0), (255, 165, 0)} <= colors  # o3 is flagged
+
+
+# ------------------------------------------------------------------ R9 and R6 edges
+def _t_junction():
+    """Wall y=100 (x 0..500, t=20) crossed by a wall at x=250 (faces 240..260)."""
+    return [_wall(True, 100, 0, 500, 20), _wall(False, 250, 0, 300, 20)]
+
+
+@pytest.mark.parametrize(
+    "span,expected",
+    [
+        ((244, 256), (244, 256)),  # wholly inside the crossing wall: kept as detected
+        ((240, 300), (260, 300)),  # starts on the face
+        ((200, 260), (200, 240)),  # ends on the face
+        ((230, 255), (230, 240)),  # ends inside the crossing wall
+        ((245, 300), (260, 300)),  # starts inside it
+        ((260, 300), (260, 300)),  # already clear
+    ],
+)
+def test_opening_is_cut_back_to_the_crossing_walls_faces(span, expected):
+    walls = _t_junction()
+    window = box("window", span[0], 95, span[1], 105, 0.9)  # narrower than the crossing wall
+    (op,) = attach_openings(walls, [window], {})
+    assert (op.wall_index, op.source) == (0, "box")
+    assert (op.s0, op.s1) == expected and op.s1 > op.s0
+
+
+def test_a_small_window_on_a_t_junction_has_a_positive_measured_width():
+    mask = np.zeros((700, 1000), bool)
+    rectangle(mask, 100, 100, 900, 600, 24)
+    draw_wall(mask, 400, 100, 400, 600, 14)  # interior wall, T into the top wall
+    plan = _synthetic_plan(mask, [box("window", 394, 90, 406, 110, 0.9)])
+    (item,) = plan.review_items
+    assert item.reason == ReviewReason.default_value_applied
+    assert "-" not in item.message.split("measured width")[1].split("mm")[0]
+
+
+@pytest.mark.parametrize("short_first", [False, True], ids=["short-last", "short-first"])
+@pytest.mark.parametrize(
+    "short,reach",
+    [
+        (_wall(False, 450, 112, 400, 40), "a"),  # stops 12 px short of y=100, below it
+        (_wall(False, 450, 0, 88, 40), "b"),  # stops 12 px short of y=100, above it
+    ],
+    ids=["below", "above"],
+)
+def test_l_corner_both_walls_end_on_each_others_centerline(short, reach, short_first):
+    """Whichever wall comes first, the corner closes on both centerlines.
+
+    Pins the behaviour only: snap_junctions retries open ends, so deleting the reach in
+    `_snap_end` changes nothing for layouts with walls apart (fuzzed, 60000 layouts).
+    """
+    thin = _wall(True, 100, 100, 460, 10)  # its end is 10 px past x=450
+    short = PixelWall(short.horizontal, short.center, short.a, short.b, short.thickness)
+    walls = [short, thin] if short_first else [thin, short]
+    snap_junctions(walls, 20.0, RecognitionSettings())
+    assert thin.b == 450  # onto the thick wall's centerline
+    assert getattr(short, reach) == 100  # and the thick wall onto the thin one's

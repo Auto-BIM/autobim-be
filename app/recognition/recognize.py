@@ -36,18 +36,19 @@ class Recognition:
     openings: list[PixelOpening] = field(default_factory=list)
     unexplained_wall_ratio: float = 0.0  # building wall pixels no wall explains
     outside_walls: list[PixelWall] = field(default_factory=list)  # dropped: not in the building
+    outside_wall_ratio: float = 0.0  # share of all wall pixels in those dropped walls
 
 
-def _unexplained_ratio(m: np.ndarray, walls: list[PixelWall], outside: list[PixelWall]) -> float:
+def _unexplained_ratio(m: np.ndarray, walls: list[PixelWall], outside_px: np.ndarray) -> float:
     """R8: share of the building's wall pixels that no recognised wall covers.
 
     The building is whatever touches a recognised wall or lies inside their outline.
-    Pixels of the walls dropped as outside the building are left out on both sides.
+    The pixels of the walls dropped as outside the building are left out on both sides.
     """
     covered = rasterize(walls, m.shape)
     lab, _ = ndi.label(m | covered, structure=np.ones((3, 3), bool))
     building = np.isin(lab, np.unique(lab[covered])) | ndi.binary_fill_holes(covered)
-    scored = m & building & ~rasterize(outside, m.shape, close_ends=False)
+    scored = m & building & ~outside_px
     return float((scored & ~covered).sum()) / max(int(scored.sum()), 1)
 
 
@@ -77,6 +78,7 @@ def recognize(
     if not walls:
         return Recognition(t_med=t_med, outside_walls=outside)
 
+    outside_px = m & rasterize(outside, m.shape, close_ends=False)
     # gap_hits refer to walls by identity: drop the hits of walls that were filtered out
     gap_hits = {i: [h for h in v if any(h.wall is w for w in walls)] for i, v in gap_hits.items()}
     return Recognition(
@@ -84,6 +86,7 @@ def recognize(
         walls=walls,
         kinds=classify(walls, mask.shape, t_med),
         openings=attach_openings(walls, detections, gap_hits),
-        unexplained_wall_ratio=_unexplained_ratio(m, walls, outside),
+        unexplained_wall_ratio=_unexplained_ratio(m, walls, outside_px),
         outside_walls=outside,
+        outside_wall_ratio=float(outside_px.sum()) / max(int(m.sum()), 1),
     )

@@ -99,6 +99,7 @@
 | R9가 `nearest`로 붙임 | 개구부 ID | `unattached_opening` | 박스 신뢰도 |
 | 개구부 폭이 범위 밖이라 기본값 적용 | 개구부 ID | `default_value_applied` | 박스 신뢰도 |
 | 설명 안 된 벽 비율 `> 0.05` | `plan` | `other`, 메시지 "인식되지 않은 벽 영역 N%(사선 벽 등)" | `1 − 비율` |
+| 건물 밖으로 버린 벽 픽셀 비율 `> 0.05` | `plan` | `other`, 메시지 "건물 밖으로 보고 제외한 벽 영역 N%(별채·난간 등)" | `1 − 비율` |
 
 Fake 도면에서는 지금처럼 `o3`의 `low_confidence` **하나만** 나와야 한다(`tests/test_recognition.py`).
 

@@ -32,6 +32,7 @@ from app.schemas.plan import (
 
 DIMENSION_CONFLICT_RATIO = 0.05
 UNEXPLAINED_REVIEW_RATIO = 0.05  # wall pixels no recognised wall explains
+OUTSIDE_REVIEW_RATIO = 0.05  # wall pixels dropped as outside the building
 OPENING_WIDTH_RANGE = (300.0, 5000.0)  # mm; outside it the default width is used
 
 
@@ -213,6 +214,17 @@ def image_to_plan(
                 reason=ReviewReason.other,
                 message=f"인식되지 않은 벽 영역 {found.unexplained_wall_ratio:.0%}(사선 벽 등)",
                 confidence=1.0 - found.unexplained_wall_ratio,
+            )
+        )
+
+    if found.outside_wall_ratio > OUTSIDE_REVIEW_RATIO:
+        review.append(
+            ReviewItem(
+                element_id="plan",
+                element_kind=ElementKind.plan,
+                reason=ReviewReason.other,
+                message=f"건물 밖으로 보고 제외한 벽 영역 {found.outside_wall_ratio:.0%}(별채·난간 등)",
+                confidence=1.0 - found.outside_wall_ratio,
             )
         )
 
