@@ -36,7 +36,7 @@ include = ["app*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "model: needs a real model bundle (AUTOBIM_SEG_BUNDLE); skipped by default",
+    "model: needs a real model bundle; skipped when AUTOBIM_SEG_BUNDLE is not set",
 ]
 
 [tool.ruff]

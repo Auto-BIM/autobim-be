@@ -3,6 +3,8 @@ import os
 import subprocess
 import sys
 import textwrap
+import threading
+import time
 import types
 from pathlib import Path
 
@@ -15,7 +17,7 @@ from app.main import create_app
 from app.models.base import BBox, OpeningDetection
 from app.models.fake import FakeDimensionReader, FakeOpeningDetector, FakeWallSegmenter
 from app.models.registry import build_models
-from app.models.seg import SegBundleError, SegModel
+from app.models.seg import RECENT_IMAGES, SegBundleError, SegModel
 from app.recognition.pipeline import image_to_plan
 from app.schemas.plan import OpeningType
 
@@ -140,6 +142,70 @@ def test_seg_predicts_once_per_image(fake_autobim_seg, bundle):
     assert fake_autobim_seg.segmenter.calls == 2
 
 
+def test_seg_interleaved_jobs_predict_once_each(fake_autobim_seg, bundle):
+    """Two jobs run in threads: A segment, B segment, A detect. B must not evict A's result."""
+    model = SegModel(bundle)
+    image_a, image_b = IMG.copy(), IMG.copy()
+    a_segmented, b_segmented = threading.Event(), threading.Event()
+
+    def job_a():
+        model.segment(image_a)
+        a_segmented.set()
+        assert b_segmented.wait(5)
+        model.detect(image_a)
+
+    def job_b():
+        assert a_segmented.wait(5)
+        model.segment(image_b)
+        b_segmented.set()
+        model.detect(image_b)
+
+    threads = [threading.Thread(target=job_a), threading.Thread(target=job_b)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert not any(t.is_alive() for t in threads)
+    assert fake_autobim_seg.segmenter.calls == 2
+
+
+def test_seg_keeps_only_recent_images(fake_autobim_seg, bundle):
+    model = SegModel(bundle)
+    images = [IMG.copy() for _ in range(RECENT_IMAGES + 1)]
+    for image in images:
+        model.segment(image)
+    assert fake_autobim_seg.segmenter.calls == RECENT_IMAGES + 1
+    model.detect(images[-1])  # still remembered
+    assert fake_autobim_seg.segmenter.calls == RECENT_IMAGES + 1
+    model.detect(images[0])  # evicted
+    assert fake_autobim_seg.segmenter.calls == RECENT_IMAGES + 2
+
+
+def test_seg_lock_serializes_concurrent_predict(fake_autobim_seg, bundle):
+    """Without the lock, both threads miss the cache and predict the same image."""
+    slow = fake_autobim_seg.segmenter
+    original = slow.predict
+
+    def slow_predict(image):
+        time.sleep(0.2)
+        return original(image)
+
+    slow.predict = slow_predict
+    model = SegModel(bundle)
+    start = threading.Barrier(2)
+
+    def call():
+        start.wait()
+        model.segment(IMG)
+
+    threads = [threading.Thread(target=call) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(10)
+    assert slow.calls == 1
+
+
 def test_seg_in_pipeline_predicts_once(fake_autobim_seg, bundle):
     """`image_to_plan` hands the same image to `segment` and `detect`."""
 
@@ -235,9 +301,13 @@ def test_seg_load_failure_is_wrapped(fake_autobim_seg, bundle):
 def test_default_app_does_not_import_heavy_modules():
     """Fake models only: neither autobim_seg nor onnxruntime/torch gets imported. Own process,
     so the result does not depend on what other tests already imported."""
+    root = Path(__file__).resolve().parents[1]
     code = textwrap.dedent(
-        """
+        f"""
         import sys, tempfile
+        from pathlib import Path
+        import app
+        assert Path(app.__file__).resolve().is_relative_to(Path({str(root)!r})), app.__file__
         from app.core.config import ModelSettings, Settings, StorageSettings
         from app.main import create_app
         create_app(Settings(models=ModelSettings(), storage=StorageSettings(data_dir=tempfile.mkdtemp())))
@@ -245,7 +315,12 @@ def test_default_app_does_not_import_heavy_modules():
         assert not heavy, heavy
         """
     )
-    subprocess.run([sys.executable, "-I", "-c", code], check=True, env={**os.environ, "PYTHONPATH": "."})
+    subprocess.run(
+        [sys.executable, "-c", code],
+        check=True,
+        cwd=root,
+        env={**os.environ, "PYTHONPATH": str(root)},
+    )
 
 
 # --- real bundle: opt in with AUTOBIM_SEG_BUNDLE and `pytest -m model` ---------------------------

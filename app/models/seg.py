@@ -2,7 +2,9 @@
 
 One `SegModel` is both the `WallSegmenter` and the `OpeningDetector`; the registry shares one
 instance so the model is loaded once. `image_to_plan` calls `segment` and `detect` on the same
-image object, so the last image is remembered and `predict` runs once per image.
+image object, so recent images are remembered and `predict` runs once per image. Jobs run in
+threads and `predict` is slow, so calls of different jobs interleave (A segment, B segment,
+A detect); remembering only the last image would make A predict again.
 
 `autobim_seg` is imported only when the model is built (never at module import), so the default
 install and the Fake models do not need onnxruntime. The bundle's `pkg/` must be on `PYTHONPATH`
@@ -29,6 +31,7 @@ from app.models.base import (
 from app.schemas.plan import OpeningType
 
 WALL_LABEL = 1
+RECENT_IMAGES = 4  # how many (image, result) pairs are kept; each pins an image and its result
 
 
 class SegBundleError(RuntimeError):
@@ -68,8 +71,7 @@ class SegModel(WallSegmenter, OpeningDetector):
         self.model_name: str = info["name"]  # shown in /health
         self._lock = threading.Lock()
         # Keep the image itself, not id(image): an id can be reused after the array is freed.
-        self._last_image: np.ndarray | None = None
-        self._last_result: Any = None
+        self._recent: list[tuple[np.ndarray, Any]] = []  # least recently used first
 
     @staticmethod
     def _import_autobim_seg(bundle: Path) -> Any:
@@ -83,10 +85,14 @@ class SegModel(WallSegmenter, OpeningDetector):
 
     def _predict(self, image: np.ndarray) -> Any:
         with self._lock:
-            if image is not self._last_image:
-                self._last_result = self._seg.predict(image)
-                self._last_image = image
-            return self._last_result
+            for i, (cached, result) in enumerate(self._recent):
+                if cached is image:
+                    self._recent.append(self._recent.pop(i))
+                    return result
+            result = self._seg.predict(image)
+            self._recent.append((image, result))
+            del self._recent[:-RECENT_IMAGES]
+            return result
 
     def segment(self, image: np.ndarray) -> WallMask:
         result = self._predict(image)
