@@ -19,7 +19,7 @@ import ifcopenshell.api.unit
 import ifcopenshell.guid
 import trimesh
 
-from app.geometry.junctions import wall_junctions
+from app.geometry.junctions import unit, wall_junctions
 from app.geometry.walls import opening_spans
 from app.schemas.plan import OpeningType, Plan
 
@@ -46,8 +46,7 @@ def _shape(f, el, body, brep):
 
 
 def _slab(wall, s0, s1, z0, z1, depth):
-    ux = (wall.end.x - wall.start.x) / wall.length
-    uy = (wall.end.y - wall.start.y) / wall.length
+    ux, uy = unit(wall)
     h = depth / 2
 
     def pt(s, side, z):
@@ -57,7 +56,7 @@ def _slab(wall, s0, s1, z0, z1, depth):
             pt(s0, -1, z1), pt(s1, -1, z1), pt(s1, 1, z1), pt(s0, 1, z1)]
 
 
-def write_ifc(plan: Plan, meshes: dict[str, trimesh.Trimesh], path: Path) -> None:
+def write_ifc(plan: Plan, meshes: dict[str, trimesh.Trimesh], path: Path, junctions=None) -> None:
     f = ifcopenshell.file(schema="IFC4")
     project = ifcopenshell.api.root.create_entity(f, ifc_class="IfcProject", name="Auto-BIM")
     ifcopenshell.api.unit.assign_unit(f, length={"is_metric": True, "raw": "MILLIMETERS"})
@@ -81,7 +80,7 @@ def write_ifc(plan: Plan, meshes: dict[str, trimesh.Trimesh], path: Path) -> Non
     for wall_id, mesh in meshes.items():
         hosts[wall_id] = add("IfcWall", f"WALL_{wall_id}", _brep(f, mesh.vertices, mesh.faces))
 
-    exts, zones = wall_junctions(plan.walls)
+    exts, zones = junctions or wall_junctions(plan.walls)
     for o in plan.openings:
         wall = plan.wall(o.wall_id)
         spans = opening_spans(wall, o, exts[wall.id], zones[wall.id])
