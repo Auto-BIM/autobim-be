@@ -16,6 +16,7 @@ from app.recognition import recognize as recognize_module
 from app.recognition.openings import attach_openings
 from app.recognition.pipeline import image_to_plan
 from app.recognition.recognize import recognize
+from app.recognition.topology import BuildingSplit
 from app.recognition.walls import PixelWall, remove_duplicate_walls, snap_junctions
 from app.schemas.jobs import ScaleHint
 from app.schemas.plan import ReviewReason, ScaleSource, WallKind
@@ -26,9 +27,12 @@ from tests.synthetic_plans import (
     models_for,
     perturb,
     rectangle,
+    square_with_a_line_beside_it,
+    square_with_a_wing,
     square_with_corner_door,
     square_with_diagonal_wall,
     square_with_doors_at_both_ends_of_the_left_wall,
+    two_plans_on_a_sheet,
     with_outside_clutter,
 )
 
@@ -187,7 +191,7 @@ def test_detections_outside_the_building_are_dropped():
 def test_the_filter_is_what_drops_the_clutter(monkeypatch):
     mask, boxes, _ = l_shaped(noise=False)
     monkeypatch.setattr(
-        recognize_module, "keep_building", lambda walls, detections, shape: (walls, [])
+        recognize_module, "keep_building", lambda walls, *_: BuildingSplit(walls, [])
     )
     assert len(recognize(with_outside_clutter(mask), boxes).walls) == 13
 
@@ -209,11 +213,16 @@ def test_clutter_does_not_change_the_plan(seed):
     assert [o.wall_id for o in cluttered.openings] == [o.wall_id for o in clean.openings]
 
 
+# 34 px off the right wall's face. Walls closer than 1 t (24 px here) are one body, so a stray
+# bar has to be farther than that to be dropped (test_walls_within_one_thickness_are_one_body)
+STRAY_BAR_X = 953
+
+
 def test_a_stray_wall_next_to_a_corner_does_not_pull_the_building_to_it():
-    """The bar is closer to the top wall's end than the corner wall is. Snapped first, it
-    would join the building; filtered first, the corner still closes on the right wall."""
+    """A bar beside the corner, beyond the link distance, is dropped and the corner still
+    closes on the right wall."""
     mask, boxes, exp = l_shaped(noise=False)
-    draw_wall(mask, 923, 20, 923, 200, 14)
+    draw_wall(mask, STRAY_BAR_X, 20, STRAY_BAR_X, 200, 14)
     r = recognize(mask, boxes)
     _match(r, exp["walls"])
     assert len(r.outside_walls) == 1
@@ -228,7 +237,7 @@ def test_a_wall_joined_to_the_building_only_by_door_boxes_is_kept():
 
 def test_a_small_stray_wall_is_dropped_without_a_review_item():
     mask, boxes, _ = l_shaped(noise=False)
-    draw_wall(mask, 923, 20, 923, 200, 14)
+    draw_wall(mask, STRAY_BAR_X, 20, STRAY_BAR_X, 200, 14)
     assert 0 < recognize(mask, boxes).outside_wall_ratio < 0.05
     plan = _synthetic_plan(mask, boxes)
     assert [r.reason for r in plan.review_items] == [ReviewReason.low_confidence]  # only o4
@@ -250,6 +259,60 @@ def test_partition_inside_the_building_is_kept_even_when_it_touches_nothing():
     r = recognize(mask, boxes)
     _match(r, exp["walls"] | {(True, 500, 143, 357, WallKind.interior)})
     assert not r.outside_walls
+
+
+# ------------------------------------------------------------------ one body, several plans
+def test_walls_within_one_thickness_are_one_body():
+    """A 20 px gap (t = 20) between a plan and its wing is a door leaf, not a split."""
+    mask, boxes = square_with_a_wing(gap=20)
+    r = recognize(mask, boxes)
+    assert not r.outside_walls and not r.other_plans
+    assert len(r.walls) == 8
+
+
+def test_walls_farther_apart_than_one_thickness_are_two_bodies():
+    mask, boxes = square_with_a_wing(gap=60)
+    r = recognize(mask, boxes)
+    assert len(r.walls) == 4 and len(r.outside_walls) == 4
+    assert r.other_plans  # the wing is plan-sized next to the plan: say so
+
+
+def test_the_link_distance_is_what_joins_the_wing():
+    mask, boxes = square_with_a_wing(gap=20)
+    r = recognize(mask, boxes, RecognitionSettings(building_link_factor=0.0))
+    assert len(r.walls) == 4 and len(r.outside_walls) == 4
+
+
+def test_a_second_plan_on_the_sheet_is_dropped_and_reported():
+    mask, boxes = two_plans_on_a_sheet()
+    plan = _synthetic_plan(mask, boxes)
+    assert len(plan.walls) == 4 and max(w.start.x for w in plan.walls) < 500 * 5.0
+    others = [r for r in plan.review_items if r.reason == ReviewReason.other]
+    messages = [r.message for r in others]
+    assert "도면에 평면이 여러 개로 보여 가장 큰 평면만 변환했습니다" in messages
+    assert not any("건물 밖으로 보고 제외한" in m for m in messages)  # not "an outbuilding"
+    assert all(r.element_id == "plan" for r in others)
+
+
+def test_the_other_plan_warning_is_what_replaces_the_outside_message():
+    mask, boxes = two_plans_on_a_sheet()
+    r = recognize(mask, boxes)
+    assert r.other_plans and r.outside_wall_ratio > 0.3
+
+
+def test_a_legend_next_to_the_plan_is_not_a_second_plan():
+    mask, boxes, _ = l_shaped(noise=False)
+    r = recognize(with_outside_clutter(mask), boxes)
+    assert not r.other_plans and r.outside_walls  # dropped, but too small to be a plan
+
+
+def test_a_long_line_beside_the_plan_is_not_a_second_plan():
+    """Frame lines and the like run one way only; a plan has walls both ways."""
+    mask, boxes = square_with_a_line_beside_it()
+    r = recognize(mask, boxes)
+    assert len(r.walls) == 4 and len(r.outside_walls) == 1
+    assert r.outside_wall_ratio > 0.25  # 35% of the plan's wall pixels: over the 30% line
+    assert not r.other_plans
 
 
 # ------------------------------------------------------------------ the same wall twice
@@ -302,7 +365,7 @@ def _cases():
     mask, boxes, _ = l_shaped(noise=True)
     yield "clutter", with_outside_clutter(mask), boxes
     mask, boxes, _ = l_shaped(noise=False)
-    draw_wall(mask, 923, 20, 923, 200, 14)
+    draw_wall(mask, STRAY_BAR_X, 20, STRAY_BAR_X, 200, 14)
     yield "bar-by-the-corner", mask, boxes
 
 
@@ -417,6 +480,44 @@ def test_a_box_that_crosses_no_wall_is_attached_to_the_nearest_and_flagged():
     assert plan.openings[0].wall_id in {w.id for w in plan.walls}
 
 
+def _padded_flat_with_two_boxes():
+    """The L-shaped flat on a sheet 700 px taller. A box 40 px off the corner is close, one
+    at the bottom of the sheet is over 600 px from every wall (20 t = 480 px)."""
+    mask, boxes, _ = l_shaped(noise=False)
+    near = box("door", 940, 640, 980, 680, 0.9)
+    far = box("window", 940, 1280, 980, 1320, 0.9)
+    return np.pad(mask, ((0, 700), (0, 0))), [*boxes, near, far]
+
+
+def test_a_box_far_from_every_wall_is_dropped_and_a_near_one_is_kept():
+    mask, boxes = _padded_flat_with_two_boxes()
+    plan = _synthetic_plan(mask, boxes)
+    ids = [o.id for o in plan.openings]
+    assert ids == ["o1", "o2", "o3", "o4", "o5"]  # o6 (the far box) is gone, IDs are not reused
+    flagged = [(r.element_id, r.reason) for r in plan.review_items]
+    assert ("o5", ReviewReason.unattached_opening) in flagged  # near, but attached by distance
+    (dropped,) = [r for r in plan.review_items if "제외한 개구부" in r.message]
+    assert dropped.element_id == "plan" and dropped.reason == ReviewReason.other
+    assert "1개" in dropped.message
+
+
+def test_the_distance_limit_is_what_drops_the_far_box():
+    mask, boxes = _padded_flat_with_two_boxes()
+    settings = RecognitionSettings(max_opening_dist_factor=1000.0)
+    plan = image_to_plan(IMG, models_for(mask, boxes, 5.0), settings=settings)
+    assert len(plan.openings) == 6
+    assert not any("제외한 개구부" in r.message for r in plan.review_items)
+
+
+def test_attach_openings_counts_the_boxes_it_dropped():
+    walls = _t_junction()
+    near, far = box("window", 100, 140, 140, 180, 0.9), box("window", 100, 900, 140, 940, 0.9)
+    ops, dropped = attach_openings(walls, [near, far], {}, max_dist=200.0)
+    assert [o.box_index for o in ops] == [0] and ops[0].source == "nearest" and dropped == 1
+    ops, dropped = attach_openings(walls, [near, far], {})  # no limit
+    assert len(ops) == 2 and dropped == 0
+
+
 # ------------------------------------------------------------------ settings
 def test_recognition_settings_in_the_yaml_are_the_code_defaults():
     assert load_settings().recognition == RecognitionSettings()
@@ -474,7 +575,7 @@ def _t_junction():
 def test_opening_is_cut_back_to_the_crossing_walls_faces(span, expected):
     walls = _t_junction()
     window = box("window", span[0], 95, span[1], 105, 0.9)  # narrower than the crossing wall
-    (op,) = attach_openings(walls, [window], {})
+    (op,), _ = attach_openings(walls, [window], {})
     assert (op.wall_index, op.source) == (0, "box")
     assert (op.s0, op.s1) == expected and op.s1 > op.s0
 

@@ -37,6 +37,8 @@ class Recognition:
     unexplained_wall_ratio: float = 0.0  # building wall pixels no wall explains
     outside_walls: list[PixelWall] = field(default_factory=list)  # dropped: not in the building
     outside_wall_ratio: float = 0.0  # share of all wall pixels in those dropped walls
+    other_plans: bool = False  # the sheet has several plans; only the largest was kept
+    dropped_openings: int = 0  # boxes too far from every wall to be attached
 
 
 def _unexplained_ratio(m: np.ndarray, walls: list[PixelWall], outside_px: np.ndarray) -> float:
@@ -69,24 +71,30 @@ def recognize(
 
     walls = remove_duplicate_walls(extract_axis_walls(m, t_med, p), p)
     walls, gap_hits = merge_collinear(walls, detections, t_med, p)
-    walls, outside = keep_building(walls, detections, mask.shape)
+    split = keep_building(walls, detections, mask.shape, t_med, p)
+    walls, outside = split.kept, split.outside
     open_ends = snap_junctions(walls, t_med, p)
     extend_open_ends(walls, detections, open_ends, gap_hits, t_med)
     snap_junctions(walls, t_med, p)
     walls = finish_walls(walls, t_med, p)
     walls.sort(key=lambda w: (not w.horizontal, w.center, w.a))
     if not walls:
-        return Recognition(t_med=t_med, outside_walls=outside)
+        return Recognition(t_med=t_med, outside_walls=outside, other_plans=split.other_plans)
 
     outside_px = m & rasterize(outside, m.shape, close_ends=False)
     # gap_hits refer to walls by identity: drop the hits of walls that were filtered out
     gap_hits = {i: [h for h in v if any(h.wall is w for w in walls)] for i, v in gap_hits.items()}
+    openings, dropped_openings = attach_openings(
+        walls, detections, gap_hits, p.max_opening_dist_factor * t_med
+    )
     return Recognition(
         t_med=t_med,
         walls=walls,
         kinds=classify(walls, mask.shape, t_med),
-        openings=attach_openings(walls, detections, gap_hits),
+        openings=openings,
         unexplained_wall_ratio=_unexplained_ratio(m, walls, outside_px),
         outside_walls=outside,
         outside_wall_ratio=float(outside_px.sum()) / max(int(m.sum()), 1),
+        other_plans=split.other_plans,
+        dropped_openings=dropped_openings,
     )

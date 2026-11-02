@@ -51,6 +51,9 @@ class RecognitionSettings(BaseModel):
     snap_factor: float = Field(default=1.0, ge=0)  # R6: snap ends within t_other / 2 + f * t
     min_len_factor: float = Field(default=1.0, ge=0)  # R6c: drop walls shorter than f * t
     duplicate_overlap_ratio: float = Field(default=0.25, gt=0, le=1.0)  # same wall seen twice
+    building_link_factor: float = Field(default=1.0, ge=0)  # R5b: walls <= f * t apart are linked
+    other_plan_ratio: float = Field(default=0.3, gt=0, le=1.0)  # R5b: 2nd body >= r * largest
+    max_opening_dist_factor: float = Field(default=20.0, gt=0)  # R9: drop nearest > f * t away
 
 
 class Settings(BaseModel):

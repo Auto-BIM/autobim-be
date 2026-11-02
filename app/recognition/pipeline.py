@@ -217,7 +217,17 @@ def image_to_plan(
             )
         )
 
-    if found.outside_wall_ratio > OUTSIDE_REVIEW_RATIO:
+    if found.other_plans:
+        review.append(
+            ReviewItem(
+                element_id="plan",
+                element_kind=ElementKind.plan,
+                reason=ReviewReason.other,
+                message="도면에 평면이 여러 개로 보여 가장 큰 평면만 변환했습니다",
+                confidence=1.0 - found.outside_wall_ratio,
+            )
+        )
+    elif found.outside_wall_ratio > OUTSIDE_REVIEW_RATIO:
         review.append(
             ReviewItem(
                 element_id="plan",
@@ -225,6 +235,17 @@ def image_to_plan(
                 reason=ReviewReason.other,
                 message=f"건물 밖으로 보고 제외한 벽 영역 {found.outside_wall_ratio:.0%}(별채·난간 등)",
                 confidence=1.0 - found.outside_wall_ratio,
+            )
+        )
+
+    if found.dropped_openings:
+        review.append(
+            ReviewItem(
+                element_id="plan",
+                element_kind=ElementKind.plan,
+                reason=ReviewReason.other,
+                message=f"벽에서 너무 멀어 제외한 개구부 {found.dropped_openings}개(건물 밖 표기 등)",
+                confidence=1.0 - found.dropped_openings / len(detections),
             )
         )
 
