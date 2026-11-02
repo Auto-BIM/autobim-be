@@ -6,9 +6,13 @@ the exterior ring is closed even where doors and windows cut the mask.
 
 from __future__ import annotations
 
+import math
+from dataclasses import dataclass
+
 import numpy as np
 from scipy import ndimage as ndi
 
+from app.core.config import RecognitionSettings
 from app.models.base import OpeningDetection
 from app.recognition.walls import PixelWall
 from app.schemas.plan import WallKind
@@ -46,38 +50,74 @@ def _box_rect(det: OpeningDetection) -> tuple[slice, slice]:
     return _span(b.y0, b.y1), _span(b.x0, b.x1)
 
 
+@dataclass
+class BuildingSplit:
+    kept: list[PixelWall]
+    outside: list[PixelWall]
+    other_plans: bool = False  # a second plan-sized body was dropped (several plans on the sheet)
+
+
+def _grow(mask: np.ndarray, radius: int) -> np.ndarray:
+    """Square dilation by `radius` px (two 1-D passes; cheap on a 17-megapixel mask)."""
+    if radius <= 0:
+        return mask
+    size = 2 * radius + 1
+    grown = ndi.maximum_filter1d(mask.view(np.uint8), size, axis=0)
+    return ndi.maximum_filter1d(grown, size, axis=1).astype(bool)
+
+
 def keep_building(
-    walls: list[PixelWall], detections: list[OpeningDetection], shape: tuple[int, int]
-) -> tuple[list[PixelWall], list[PixelWall]]:
+    walls: list[PixelWall],
+    detections: list[OpeningDetection],
+    shape: tuple[int, int],
+    t_med: float = 0.0,
+    p: RecognitionSettings | None = None,
+) -> BuildingSplit:
     """Keep the largest connected body of walls and whatever lies inside its outline.
 
     Anything else was found outside the building (a legend, a neighbour sketch, a page
-    frame). Walls are connected when their drawn rectangles touch; the opening boxes count
-    too, because a door at a corner leaves the wall ends it ate apart. A free-standing
-    partition inside the outline is kept. Returns (kept, outside).
+    frame). Walls are connected when their drawn rectangles come within
+    `building_link_factor * t_med` of each other: a door leaf or a model's gap does not split
+    a plan in two. The opening boxes count too, because a door at a corner leaves the wall
+    ends it ate apart. A free-standing partition inside the outline is kept.
+
+    `other_plans` is set when a second body that has both horizontal and vertical walls is at
+    least `other_plan_ratio` of the largest one: several plans share the sheet and only the
+    largest was kept. (A lone frame line or bar has walls in one direction only.)
 
     This runs before junctions are snapped: a stray wall next to a corner would otherwise
     pull the building's wall ends onto itself and join the building.
     """
+    p = p or RecognitionSettings()
     if not walls:
-        return [], []
+        return BuildingSplit([], [])
     drawn = rasterize(walls, shape, close_ends=False)
     linked = drawn.copy()
     for det in detections:
         linked[_box_rect(det)] = True
+    linked = _grow(linked, math.ceil(p.building_link_factor * t_med / 2))
     lab, n = ndi.label(linked, structure=_EIGHT)
     areas = ndi.sum(drawn, lab, index=np.arange(1, n + 1))  # wall pixels, not box pixels
     main = int(np.argmax(areas)) + 1
     outline = ndi.binary_fill_holes(lab == main)
     kept, outside = [], []
+    directions: dict[int, set[bool]] = {}
     for w in walls:
         rect = _rect(w, close_ends=False)
         labels = lab[rect]
-        if labels.size == 0 or labels.max() == main or outline[rect].all():
+        body = int(labels.max()) if labels.size else 0
+        directions.setdefault(body, set()).add(w.horizontal)
+        if labels.size == 0 or body == main or outline[rect].all():
             kept.append(w)
         else:
             outside.append(w)
-    return kept, outside
+    rivals = [
+        float(areas[b - 1])
+        for b, d in directions.items()
+        if b not in (0, main) and len(d) == 2  # a plan has walls both ways
+    ]
+    other_plans = bool(rivals) and max(rivals) >= p.other_plan_ratio * float(areas[main - 1])
+    return BuildingSplit(kept, outside, other_plans)
 
 
 def exterior_region(walls: list[PixelWall], shape: tuple[int, int]) -> np.ndarray:

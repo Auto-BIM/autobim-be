@@ -163,6 +163,37 @@ def with_outside_clutter(mask):
     return m
 
 
+def square_with_a_wing(gap: int = 20):
+    """A 400x300 plan and a 180x200 wing beside it, `gap` px of empty space between their walls.
+
+    The wing is not joined to the plan by any wall or opening box: only the distance links
+    them (a door leaf, a model's gap). Returns (mask, boxes).
+    """
+    m = np.zeros((400, 800), bool)
+    rectangle(m, 50, 50, 450, 350, 20)  # outer face of the right wall: x = 460
+    x0 = 460 + gap + 10  # the wing's left wall is 20 px thick
+    rectangle(m, x0, 100, x0 + 180, 300, 20)
+    return m, []
+
+
+def two_plans_on_a_sheet():
+    """A 400x300 plan and a 300x250 plan side by side, a door in each. Returns (mask, boxes)."""
+    m = np.zeros((400, 1300), bool)
+    rectangle(m, 50, 50, 450, 350, 20)
+    rectangle(m, 800, 80, 1100, 330, 20)
+    cut(m, 200, 340, 290, 360)
+    cut(m, 850, 320, 940, 340)
+    return m, [box("door", 200, 260, 290, 362, 0.9), box("door", 850, 250, 940, 342, 0.9)]
+
+
+def square_with_a_line_beside_it(length: int = 700):
+    """A 400x300 plan and one long vertical bar (a page-edge line): walls in one direction only."""
+    m = np.zeros((800, 800), bool)
+    rectangle(m, 50, 50, 450, 350, 20)
+    draw_wall(m, 650, 40, 650, 40 + length, 14)
+    return m, []
+
+
 class _Segmenter(WallSegmenter):
     def __init__(self, mask):
         self.mask = mask

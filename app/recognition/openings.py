@@ -28,17 +28,24 @@ class PixelOpening:
 
 
 def attach_openings(
-    walls: list[PixelWall], detections: list[OpeningDetection], gap_hits: GapHits
-) -> list[PixelOpening]:
+    walls: list[PixelWall],
+    detections: list[OpeningDetection],
+    gap_hits: GapHits,
+    max_dist: float = float("inf"),
+) -> tuple[list[PixelOpening], int]:
     """R9, in order of preference:
 
     1. `gap`: the mask was cut here and the box explains it; the best-fitting gap wins.
     2. `box`: the box crosses a wall band (+-2 px); the wall it shares the most length with.
-    3. `nearest`: nothing crosses; the wall closest to the box centre (a review item).
+    3. `nearest`: nothing crosses; the wall closest to the box centre (a review item), unless
+       it is farther than `max_dist` px: that box belongs to something that is not in the
+       plan (a neighbouring plan, a roof pattern) and is dropped.
 
     Finally the interval is kept clear of crossing walls' thickness.
+    Returns (openings, number of boxes dropped as too far from every wall).
     """
     result: list[PixelOpening] = []
+    dropped = 0
     for i, det in enumerate(detections):
         cx, cy = det.bbox.center
         if gap_hits.get(i):
@@ -64,15 +71,19 @@ def attach_openings(
             b0, b1 = box_interval(det, w.horizontal)
             result.append(PixelOpening(i, det.type, j, max(b0, w.a), min(b1, w.b), "box"))
             continue
-        near = _nearest(walls, i, det)
-        if near is not None:
+        near = _nearest(walls, i, det, max_dist)
+        if near is None:
+            dropped += 1
+        else:
             result.append(near)
     for op in result:
         _clear_of_crossing_walls(op, walls)
-    return result
+    return result, dropped
 
 
-def _nearest(walls: list[PixelWall], index: int, det: OpeningDetection) -> PixelOpening | None:
+def _nearest(
+    walls: list[PixelWall], index: int, det: OpeningDetection, max_dist: float
+) -> PixelOpening | None:
     cx, cy = det.bbox.center
     best_j, best_d = None, float("inf")
     for j, w in enumerate(walls):
@@ -80,7 +91,7 @@ def _nearest(walls: list[PixelWall], index: int, det: OpeningDetection) -> Pixel
         d = float(np.hypot(max(w.a - s, 0, s - w.b), c - w.center))
         if d < best_d:
             best_j, best_d = j, d
-    if best_j is None:
+    if best_j is None or best_d > max_dist:
         return None
     w = walls[best_j]
     b0, b1 = box_interval(det, w.horizontal)
