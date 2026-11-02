@@ -467,9 +467,11 @@ def _pt_dist(p, w, e):
 
 
 def _on_center(p, w):
+    """p is within 1 mm (straight-line) of w's centerline segment."""
     ux, uy = (w.end.x - w.start.x) / w.length, (w.end.y - w.start.y) / w.length
     dx, dy = p[0] - w.start.x, p[1] - w.start.y
-    return abs(-dx * uy + dy * ux) <= 1.0 and -1.0 <= dx * ux + dy * uy <= w.length + 1.0
+    s = min(max(dx * ux + dy * uy, 0.0), w.length)
+    return math.hypot(dx - ux * s, dy - uy * s) <= 1.0
 
 
 def _quad_gap(a, wa, ea, b, wb, eb):
@@ -703,3 +705,37 @@ def test_walls_closer_than_about_half_a_degree_count_as_folded_not_as_a_corner(d
 
     plan = _walls_plan([("m", (0, 0), (4000, 0), 200), ("o", (0, 0), _ray(deg, 3000), 200)])
     assert (wall_junctions(plan.walls)[0]["m"][0] > 0) is extended
+
+
+@pytest.mark.parametrize("b_start, joined", [
+    ((-0.9, 0.9), False),   # review repro: 1.27 mm apart diagonally, each used to count as the other's trunk
+    ((1.5, 1.5), False), ((-1.4, 0.0), False), ((0.0, 1.5), False),
+    ((1.0, 1.0), True),     # 1.0 mm from a's centerline: a T, however far from a's start
+    ((-0.6, 0.6), True), ((-1.0, 0.0), True), ((0.0, 0.9), True),
+])
+def test_end_tolerance_is_one_straight_line_distance_for_clusters_and_centerlines(b_start, joined):
+    from app.geometry.junctions import wall_junctions
+
+    plan = _walls_plan([("a", (0, 0), (4000, 0), 200), ("b", b_start, (b_start[0], 3000), 200)])
+    ext, zones = wall_junctions(plan.walls)
+    assert (ext["a"] != (0, 0) or ext["b"] != (0, 0)) is joined
+    if not joined:  # nothing is trimmed or extended: no wall is mistaken for the other's trunk
+        assert ext == {"a": (0, 0), "b": (0, 0)} and zones == {"a": [], "b": []}
+
+
+def test_a_door_over_a_branch_root_is_cut_in_two_while_the_plan_keeps_its_width():
+    """Known limit (see junctions docstring): the Plan says width 900, the 3D/DXF show 390 + 390."""
+    from app.geometry.walls import opening_spans
+
+    plan = _walls_plan([("w1", (0, 0), (4000, 0), 200), ("w2", (2000, 0), (2000, 3000), 120)],
+                       [{**DOOR, "position": 2000}])
+    spans = opening_spans(plan.walls[0], plan.openings[0], *_ext_zones(plan, "w1"))
+    assert [(round(a), round(b)) for a, b in spans] == [(1550, 1940), (2060, 2450)]
+    assert plan.openings[0].width == 900
+
+
+def _ext_zones(plan, wid):
+    from app.geometry.junctions import wall_junctions
+
+    ext, zones = wall_junctions(plan.walls)
+    return ext[wid], zones[wid]
