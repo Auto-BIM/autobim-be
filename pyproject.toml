@@ -10,6 +10,7 @@ dependencies = [
     "pydantic>=2.6",
     "pyyaml>=6.0",
     "numpy>=1.26",
+    "scipy>=1.11",
     "pillow>=10.0",
     "ezdxf>=1.2",
     "trimesh>=4.2",
@@ -31,6 +32,7 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: timing tests on large synthetic masks"]
 
 [tool.ruff]
 line-length = 100

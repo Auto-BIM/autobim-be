@@ -7,10 +7,13 @@ import statistics
 import numpy as np
 
 from app.core import defaults
+from app.core.config import RecognitionSettings
 from app.models.base import DimensionText, OpeningDetection
 from app.models.registry import Models
 from app.preprocess.image import preprocess
-from app.recognition.walls import PixelWall, extract_walls
+from app.recognition.openings import PixelOpening
+from app.recognition.recognize import recognize
+from app.recognition.walls import PixelWall
 from app.schemas.plan import (
     ElementKind,
     Opening,
@@ -28,6 +31,8 @@ from app.schemas.plan import (
 )
 
 DIMENSION_CONFLICT_RATIO = 0.05
+UNEXPLAINED_REVIEW_RATIO = 0.05  # wall pixels no recognised wall explains
+OPENING_WIDTH_RANGE = (300.0, 5000.0)  # mm; outside it the default width is used
 
 
 class RecognitionError(Exception):
@@ -35,20 +40,6 @@ class RecognitionError(Exception):
         super().__init__(message)
         self.code = code
         self.message = message
-
-
-def _classify(walls: list[PixelWall]) -> list[WallKind]:
-    """Walls lying on the bounding box of all centerlines are exterior."""
-    xs = [w.center for w in walls if not w.horizontal]
-    ys = [w.center for w in walls if w.horizontal]
-    kinds = []
-    for w in walls:
-        edges = ys if w.horizontal else xs
-        on_edge = bool(edges) and (
-            abs(w.center - min(edges)) <= w.thickness or abs(w.center - max(edges)) <= w.thickness
-        )
-        kinds.append(WallKind.exterior if on_edge else WallKind.interior)
-    return kinds
 
 
 def _resolve_scale(
@@ -91,17 +82,17 @@ def _resolve_scale(
     return Scale(source=ScaleSource.assumed_wall_thickness, estimated=True, mm_per_px=mm_per_px)
 
 
-def _point_segment(px: float, py: float, w: PixelWall) -> tuple[float, float]:
-    """(distance, t along wall from its start) in px."""
-    (ax, ay), (bx, by) = w.endpoints()
-    dx, dy = bx - ax, by - ay
-    t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)
-    t = min(1.0, max(0.0, t))
-    cx, cy = ax + t * dx, ay + t * dy
-    return float(np.hypot(px - cx, py - cy)), t * w.length
+def _opening_width(op: PixelOpening, mm_per_px: float) -> tuple[float, bool]:
+    """(width in mm, whether the default had to replace an implausible width)."""
+    width = (op.s1 - op.s0) * mm_per_px
+    if OPENING_WIDTH_RANGE[0] <= width <= OPENING_WIDTH_RANGE[1]:
+        return width, False
+    is_door = op.type == OpeningType.door
+    return (defaults.DOOR_WIDTH if is_door else defaults.WINDOW_WIDTH), True
 
 
-def _attach_openings(
+def _plan_openings(
+    pixel_openings: list[PixelOpening],
     detections: list[OpeningDetection],
     walls: list[PixelWall],
     ids: list[str],
@@ -110,46 +101,58 @@ def _attach_openings(
     review: list[ReviewItem],
 ) -> list[Opening]:
     openings = []
-    for i, det in enumerate(detections):
-        oid = f"o{i + 1}"
-        cx, cy = det.bbox.center
-        hits = [_point_segment(cx, cy, w) for w in walls]
-        idx = min(range(len(walls)), key=lambda j: hits[j][0])
-        dist, along = hits[idx]
-        wall = walls[idx]
-        span_px = det.bbox.width if wall.horizontal else det.bbox.height
-        is_door = det.type == OpeningType.door
+    for op in pixel_openings:
+        det = detections[op.box_index]
+        oid = f"o{op.box_index + 1}"
+        wall = walls[op.wall_index]
+        is_door = op.type == OpeningType.door
+        width, defaulted = _opening_width(op, mm_per_px)
+        centre = ((op.s0 + op.s1) / 2 - wall.a) * mm_per_px
         openings.append(
             Opening(
                 id=oid,
-                type=det.type,
-                wall_id=ids[idx],
-                position=along * mm_per_px,
-                width=span_px * mm_per_px if span_px > 0 else (
-                    defaults.DOOR_WIDTH if is_door else defaults.WINDOW_WIDTH
-                ),
+                type=op.type,
+                wall_id=ids[op.wall_index],
+                position=min(max(centre, 0.0), wall.length * mm_per_px),
+                width=width,
                 height=defaults.DOOR_HEIGHT if is_door else defaults.WINDOW_HEIGHT,
                 sill_height=0.0 if is_door else defaults.WINDOW_SILL_HEIGHT,
                 confidence=det.confidence,
             )
         )
-        if dist > max(wall.thickness * 1.5, 5.0):
-            review.append(
-                ReviewItem(
-                    element_id=oid,
-                    element_kind=ElementKind.opening,
-                    reason=ReviewReason.unattached_opening,
-                    message=f"nearest wall {ids[idx]} is {dist * mm_per_px:.0f} mm away",
-                    confidence=det.confidence,
-                )
-            )
         if det.confidence < threshold:
             review.append(
                 ReviewItem(
                     element_id=oid,
                     element_kind=ElementKind.opening,
                     reason=ReviewReason.low_confidence,
-                    message=f"{det.type.value} detected with low confidence",
+                    message=f"{op.type.value} detected with low confidence",
+                    confidence=det.confidence,
+                )
+            )
+        if op.source == "nearest":
+            review.append(
+                ReviewItem(
+                    element_id=oid,
+                    element_kind=ElementKind.opening,
+                    reason=ReviewReason.unattached_opening,
+                    message=(
+                        f"no wall crosses this {op.type.value}; "
+                        f"nearest wall {ids[op.wall_index]} is {op.dist * mm_per_px:.0f} mm away"
+                    ),
+                    confidence=det.confidence,
+                )
+            )
+        if defaulted:
+            review.append(
+                ReviewItem(
+                    element_id=oid,
+                    element_kind=ElementKind.opening,
+                    reason=ReviewReason.default_value_applied,
+                    message=(
+                        f"measured width {(op.s1 - op.s0) * mm_per_px:.0f} mm is implausible; "
+                        f"using the default {width:g} mm"
+                    ),
                     confidence=det.confidence,
                 )
             )
@@ -161,18 +164,22 @@ def image_to_plan(
     models: Models,
     *,
     filename: str | None = None,
-    review_threshold: float = 0.5,
+    review_threshold: float | None = None,
+    settings: RecognitionSettings | None = None,
 ) -> Plan:
+    settings = settings or RecognitionSettings()
+    if review_threshold is None:
+        review_threshold = settings.review_confidence_threshold
     image = preprocess(image)
     wall_mask = models.wall_segmenter.segment(image)
     detections = models.opening_detector.detect(image)
     dimensions = models.dimension_reader.read(image)
 
-    walls = extract_walls(wall_mask.mask)
+    found = recognize(wall_mask.mask, detections, settings)
+    walls, kinds = found.walls, found.kinds
     if not walls:
         raise RecognitionError("no_walls", "no walls found in the wall mask")
     ids = [f"w{i + 1}" for i in range(len(walls))]
-    kinds = _classify(walls)
     review: list[ReviewItem] = []
     scale = _resolve_scale(walls, kinds, dimensions, review)
     s = scale.mm_per_px
@@ -197,7 +204,17 @@ def image_to_plan(
                 confidence=wall_mask.confidence,
             )
         )
-    openings = _attach_openings(detections, walls, ids, s, review_threshold, review)
+    openings = _plan_openings(found.openings, detections, walls, ids, s, review_threshold, review)
+    if found.unexplained_wall_ratio > UNEXPLAINED_REVIEW_RATIO:
+        review.append(
+            ReviewItem(
+                element_id="plan",
+                element_kind=ElementKind.plan,
+                reason=ReviewReason.other,
+                message=f"인식되지 않은 벽 영역 {found.unexplained_wall_ratio:.0%}(사선 벽 등)",
+                confidence=1.0 - found.unexplained_wall_ratio,
+            )
+        )
 
     return Plan(
         source=PlanSource(

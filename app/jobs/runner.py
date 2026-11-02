@@ -34,7 +34,7 @@ def _recognise(record: JobRecord, models: Models, settings: Settings) -> Plan:
         load_image(data),
         models,
         filename=record.job.input.filename,
-        review_threshold=settings.recognition.review_confidence_threshold,
+        settings=settings.recognition,
     )
 
 

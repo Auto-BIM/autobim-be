@@ -30,6 +30,7 @@ numpy==2.4.6
     # via
     #   autobim-backend (pyproject.toml)
     #   ezdxf
+    #   scipy
     #   trimesh
 opentelemetry-api==1.45.1
     # via fastapi
@@ -51,6 +52,8 @@ pyyaml==6.0.3
     # via
     #   autobim-backend (pyproject.toml)
     #   uvicorn
+scipy==1.17.1
+    # via autobim-backend (pyproject.toml)
 starlette==1.10.0
     # via fastapi
 trimesh==5.2.0

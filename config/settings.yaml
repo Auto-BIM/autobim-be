@@ -26,3 +26,14 @@ limits:
 recognition:
   # detections below this confidence become review items
   review_confidence_threshold: 0.5
+  # Length factors are relative to the drawing's wall thickness (docs/recognition.md section 3).
+  # Tune on the dev evaluation pack only.
+  min_component_area_factor: 4.0  # R1: drop blobs smaller than f * t^2
+  run_len_factor: 2.5  # R3: shortest run counted as a wall, max(f * t, 15) px
+  thin_factor: 0.4  # R3: drop bands thinner than f * t
+  collinear_tol_factor: 0.5  # R5: same line when centers differ by <= f * max(t)
+  noise_gap_factor: 1.0  # R5: join gaps <= f * t even without an opening box
+  gap_cover_ratio: 0.5  # R5: an opening box must cover this share of a gap
+  snap_factor: 1.0  # R6: snap ends within t_other / 2 + f * t of a crossing wall
+  min_len_factor: 1.0  # R6c: drop walls shorter than f * t
+  duplicate_overlap_ratio: 0.25  # parallel walls sharing this much of their thickness and length are one wall
