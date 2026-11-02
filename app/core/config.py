@@ -13,15 +13,16 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = ROOT_DIR / "config" / "settings.yaml"
 
 
-class CubiCasaSettings(BaseModel):
-    weights_path: str | None = None
+class SegSettings(BaseModel):
+    bundle_dir: str | None = None  # model bundle folder (SYSTEM_SPEC 3.1); required when `seg` is used
+    threads: int = Field(default=2, gt=0)  # ONNX Runtime intra-op threads
 
 
 class ModelSettings(BaseModel):
     wall_segmenter: str = "fake"
     opening_detector: str = "fake"
     dimension_reader: str = "fake"
-    cubicasa: CubiCasaSettings = Field(default_factory=CubiCasaSettings)
+    seg: SegSettings = Field(default_factory=SegSettings)
 
 
 class StorageSettings(BaseModel):
@@ -69,6 +70,10 @@ _ENV_MODEL_OVERRIDES = {
     "AUTOBIM_OPENING_DETECTOR": "opening_detector",
     "AUTOBIM_DIMENSION_READER": "dimension_reader",
 }
+_ENV_SEG_OVERRIDES = {
+    "AUTOBIM_SEG_BUNDLE": "bundle_dir",
+    "AUTOBIM_SEG_THREADS": "threads",
+}
 _ENV_LIMIT_OVERRIDES = {
     "AUTOBIM_MAX_UPLOAD_MB": "max_upload_mb",
     "AUTOBIM_MAX_PIXELS": "max_pixels",
@@ -82,6 +87,11 @@ def load_settings(path: str | Path | None = None) -> Settings:
     for env, field in _ENV_LIMIT_OVERRIDES.items():
         if value := os.environ.get(env):
             limits[field] = value  # validated (and coerced to int) with the rest of the file
+    models = raw["models"] = raw.get("models") or {}
+    seg = models["seg"] = models.get("seg") or {}
+    for env, field in _ENV_SEG_OVERRIDES.items():
+        if value := os.environ.get(env):
+            seg[field] = value  # validated (and coerced to int) with the rest of the file
     settings = Settings.model_validate(raw)
     for env, field in _ENV_MODEL_OVERRIDES.items():
         if value := os.environ.get(env):
