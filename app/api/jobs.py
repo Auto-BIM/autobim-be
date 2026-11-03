@@ -12,7 +12,7 @@ from PIL import Image
 
 from app.core.config import LimitsSettings
 from app.jobs.download import JobFileResponse
-from app.jobs.runner import run_job
+from app.jobs.runner import run_job_background
 from app.jobs.store import JobRecord, JobStore
 from app.jobs.supplement import SupplementError, replay_supplements
 from app.schemas.jobs import ErrorResponse, FileKind, Job, JobInput, JobStatus, SupplementRequest
@@ -81,7 +81,7 @@ def _image_too_large(size: str, limits: LimitsSettings) -> HTTPException:
 
 def _schedule(request: Request, background: BackgroundTasks, job_id: str) -> None:
     state = request.app.state
-    background.add_task(run_job, state.store, job_id, state.models, state.settings)
+    background.add_task(run_job_background, state.store, job_id, state.models, state.settings)
 
 
 @router.post(

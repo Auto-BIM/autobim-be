@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import anyio
 from fastapi import HTTPException
 
 from app.core.config import JobsSettings
@@ -53,6 +54,9 @@ class JobStore:
         self._lock = threading.Lock()
         self.settings = settings or JobsSettings()
         self.recognition_slots = threading.BoundedSemaphore(self.settings.max_concurrent)
+        # Waiting jobs use async capacity acquisition, independent of the API thread pool.
+        # One extra worker permits export and the next recognition to overlap.
+        self.runner_limiter = anyio.CapacityLimiter(self.settings.max_concurrent + 1)
         self.cleanup()
 
     def cleanup(self) -> None:
@@ -64,26 +68,35 @@ class JobStore:
         cutoff = _now() - timedelta(hours=self.settings.ttl_hours)
         with self._lock:
             for job_id, record in list(self._records.items()):
-                if (not record.downloads and record.job.status not in (JobStatus.queued, JobStatus.running)
-                        and record.job.updated_at < cutoff and not record.dir.exists()):
-                    self._records.pop(job_id)
-            if not self.data_dir.exists():
+                try:
+                    if (not record.downloads
+                            and record.job.status not in (JobStatus.queued, JobStatus.running)
+                            and record.job.updated_at < cutoff and not record.dir.exists()):
+                        self._records.pop(job_id)
+                except OSError:
+                    logging.getLogger(__name__).warning("job %s cleanup_failed", job_id)
+            try:
+                folders = list(self.data_dir.iterdir())
+            except FileNotFoundError:
                 return
-            for folder in self.data_dir.iterdir():
+            except OSError:
+                logging.getLogger(__name__).warning("jobs cleanup_scan_failed")
+                return
+            for folder in folders:
                 if not re.fullmatch(r"[0-9a-f]{32}", folder.name):
                     continue
-                if folder.is_symlink() or not folder.is_dir():
-                    continue
-                record = self._records.get(folder.name)
-                if record is not None:
-                    if record.downloads or record.job.status in (JobStatus.queued, JobStatus.running):
-                        continue
-                    timestamp = record.job.updated_at
-                else:
-                    timestamp = datetime.fromtimestamp(folder.stat().st_mtime, UTC)
-                if timestamp >= cutoff:
-                    continue
                 try:
+                    if folder.is_symlink() or not folder.is_dir():
+                        continue
+                    record = self._records.get(folder.name)
+                    if record is not None:
+                        if record.downloads or record.job.status in (JobStatus.queued, JobStatus.running):
+                            continue
+                        timestamp = record.job.updated_at
+                    else:
+                        timestamp = datetime.fromtimestamp(folder.stat().st_mtime, UTC)
+                    if timestamp >= cutoff:
+                        continue
                     shutil.rmtree(folder)
                 except OSError:
                     logging.getLogger(__name__).warning("job %s cleanup_failed", folder.name)

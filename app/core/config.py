@@ -40,7 +40,7 @@ class LimitsSettings(BaseModel):
 
 class JobsSettings(BaseModel):
     max_concurrent: int = Field(default=1, gt=0)
-    ttl_hours: float = Field(default=72, gt=0, allow_inf_nan=False)
+    ttl_hours: float = Field(default=72, gt=0, le=24 * 365 * 100, allow_inf_nan=False)
 
 
 class CorsSettings(BaseModel):

@@ -24,7 +24,7 @@ def create(store, data):
 
 
 @pytest.mark.parametrize("values", [{"max_concurrent": 0}, {"ttl_hours": 0},
-                                    {"ttl_hours": float("inf")}])
+                                    {"ttl_hours": float("inf")}, {"ttl_hours": 1e9}])
 def test_invalid_job_settings(values):
     with pytest.raises(ValidationError):
         JobsSettings(**values)
@@ -406,3 +406,95 @@ def test_multiple_downloads_keep_independent_pins(client, png_bytes, monkeypatch
     store.release_download(job["id"])
     store.cleanup()
     assert store.get(job["id"]) is None
+
+
+def test_internal_error_keeps_traceback(tmp_path, settings, png_bytes, monkeypatch, caplog):
+    store = JobStore(tmp_path)
+    job = create(store, png_bytes)
+
+    def broken(*args):
+        raise RuntimeError("specific model failure detail")
+
+    monkeypatch.setattr(runner, "_recognise", broken)
+    with caplog.at_level(logging.INFO, logger=runner.log.name):
+        runner.run_job(store, job.id, build_models(settings.models), settings)
+    failures = [r for r in caplog.records if r.exc_info]
+    assert len(failures) == 1
+    assert failures[0].exc_info[0] is RuntimeError
+    assert "specific model failure detail" in caplog.text
+    assert "Traceback" in caplog.text
+
+
+@pytest.mark.parametrize("operation", ["iterdir", "stat", "is_dir"])
+def test_cleanup_metadata_errors_do_not_break_creation(tmp_path, png_bytes, monkeypatch, operation):
+    store = JobStore(tmp_path)
+    orphan = tmp_path / ("e" * 32)
+    orphan.mkdir()
+    method = getattr(type(tmp_path), operation)
+
+    def denied(path, *args, **kwargs):
+        if path == (tmp_path if operation == "iterdir" else orphan):
+            raise PermissionError("controlled metadata failure")
+        return method(path, *args, **kwargs)
+
+    monkeypatch.setattr(type(tmp_path), operation, denied)
+    job = create(store, png_bytes)
+    assert store.get(job.id).job.status == JobStatus.queued
+
+
+def test_many_queued_uploads_leave_api_threads_available(settings, png_bytes, fake_plan, monkeypatch):
+    import anyio
+    import httpx
+
+    from app.main import create_app
+
+    app = create_app(settings)
+    store = app.state.store
+    release = threading.Event()
+    started = threading.Event()
+
+    def recognise(*args):
+        started.set()
+        assert release.wait(15)
+        return fake_plan
+
+    monkeypatch.setattr(runner, "_recognise", recognise)
+    monkeypatch.setattr(runner, "write_outputs", lambda *args: {})
+
+    async def scenario():
+        limiter = anyio.to_thread.current_default_thread_limiter()
+        previous = limiter.total_tokens
+        limiter.total_tokens = 2
+        created = asyncio.Event()
+        original = store.create
+        ids = []
+
+        def tracked(*args):
+            job = original(*args)
+            ids.append(job.id)
+            if len(ids) == 40:
+                created.set()
+            return job
+
+        monkeypatch.setattr(store, "create", tracked)
+        tasks = []
+        try:
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+                tasks = [asyncio.create_task(client.post(
+                    "/api/jobs", files={"file": ("plan.png", png_bytes, "image/png")}
+                )) for _ in range(40)]
+                await asyncio.wait_for(created.wait(), 10)
+                health = await asyncio.wait_for(client.get("/health"), 5)
+                status = await asyncio.wait_for(client.get(f"/api/jobs/{ids[-1]}"), 5)
+                assert health.status_code == status.status_code == 200
+                assert status.json()["status"] == "queued"
+                assert limiter.borrowed_tokens == 0
+                release.set()
+                responses = await asyncio.wait_for(asyncio.gather(*tasks), 15)
+                assert all(response.status_code == 202 for response in responses)
+        finally:
+            release.set()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            limiter.total_tokens = previous
+
+    asyncio.run(scenario())

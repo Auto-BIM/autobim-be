@@ -10,6 +10,8 @@ import logging
 from contextlib import contextmanager
 from time import perf_counter
 
+import anyio
+
 from app.core.config import Settings
 from app.dxf_input.reader import dxf_to_plan
 from app.export import write_outputs
@@ -48,7 +50,7 @@ def _timed(timings: dict, stage: str):
     try:
         yield
     finally:
-        timings[stage] = perf_counter() - start
+        timings[stage] += perf_counter() - start
 
 
 def _fail(store: JobStore, job_id: str, code: str, message: str) -> None:
@@ -56,14 +58,25 @@ def _fail(store: JobStore, job_id: str, code: str, message: str) -> None:
     store.update(job_id, status=JobStatus.failed, error=JobError(code=code, message=message))
 
 
-def run_job(store: JobStore, job_id: str, models: Models, settings: Settings) -> None:
+async def run_job_background(store: JobStore, job_id: str, models: Models, settings: Settings) -> None:
+    """Queue without borrowing API thread tokens; bound job workers independently."""
+    await anyio.to_thread.run_sync(
+        run_job, store, job_id, models, settings, perf_counter(), limiter=store.runner_limiter,
+    )
+
+
+def run_job(
+    store: JobStore, job_id: str, models: Models, settings: Settings, queued_at: float | None = None,
+) -> None:
     record = store.get(job_id)
     if record is None:
         return
     timings = dict.fromkeys(("wait", "decode", "plan", "supplement", "export"), 0.0)
-    started = perf_counter()
+    started = queued_at if queued_at is not None else perf_counter()
+    timings["wait"] = perf_counter() - started
     outcome = "failed"
     code = "none"
+    error_info = None
     try:
         if record.base_plan is None:
             with _timed(timings, "wait"):
@@ -92,13 +105,15 @@ def run_job(store: JobStore, job_id: str, models: Models, settings: Settings) ->
         code = "not_implemented"
         _fail(store, job_id, code, str(exc))
     except Exception as exc:  # noqa: BLE001 — a job must never stay "running"
+        error_info = (type(exc), exc, exc.__traceback__)
         code = "internal_error"
         _fail(store, job_id, code, str(exc))
     finally:
         log.log(
-            logging.INFO if outcome == "completed" else logging.ERROR,
+            logging.ERROR if code == "internal_error" else logging.INFO,
             "job %s %s code=%s %s total=%.6fs",
             job_id, outcome, code,
             " ".join(f"{stage}={duration:.6f}s" for stage, duration in timings.items()),
             perf_counter() - started,
+            exc_info=error_info,
         )
