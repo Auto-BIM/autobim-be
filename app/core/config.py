@@ -38,6 +38,11 @@ class LimitsSettings(BaseModel):
         return self.max_upload_mb * 1024 * 1024
 
 
+class JobsSettings(BaseModel):
+    max_concurrent: int = Field(default=1, gt=0)
+    ttl_hours: float = Field(default=72, gt=0, allow_inf_nan=False)
+
+
 class RecognitionSettings(BaseModel):
     """Image-path recognition. Every length factor is relative to the drawing's wall thickness."""
 
@@ -60,6 +65,7 @@ class Settings(BaseModel):
     models: ModelSettings = Field(default_factory=ModelSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     limits: LimitsSettings = Field(default_factory=LimitsSettings)
+    jobs: JobsSettings = Field(default_factory=JobsSettings)
     recognition: RecognitionSettings = Field(default_factory=RecognitionSettings)
 
     @property

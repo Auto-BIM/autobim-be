@@ -8,12 +8,18 @@ Not shared across processes and lost on restart (issue #4 replaces this).
 
 from __future__ import annotations
 
+import logging
+import re
+import shutil
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from fastapi import HTTPException
+
+from app.core.config import JobsSettings
 from app.schemas.jobs import (
     FileKind,
     Job,
@@ -33,6 +39,7 @@ class JobRecord:
     supplements: list[SupplementRequest] = field(default_factory=list)
     base_plan: Plan | None = None  # first recognition result; supplements replay onto it
     outputs: dict[FileKind, Path] = field(default_factory=dict)  # of job.result_revision
+    downloads: int = 0  # active responses; TTL cleanup must wait for them
 
 
 def _now() -> datetime:
@@ -40,34 +47,85 @@ def _now() -> datetime:
 
 
 class JobStore:
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, settings: JobsSettings | None = None) -> None:
         self.data_dir = data_dir
         self._records: dict[str, JobRecord] = {}
         self._lock = threading.Lock()
+        self.settings = settings or JobsSettings()
+        self.recognition_slots = threading.BoundedSemaphore(self.settings.max_concurrent)
+        self.cleanup()
+
+    def cleanup(self) -> None:
+        """Expire inactive records and UUID folders left by earlier processes.
+
+        Hold the index lock through removal so queued/running records cannot be
+        deleted while a revision starts. Orphans use directory mtime after restart.
+        """
+        cutoff = _now() - timedelta(hours=self.settings.ttl_hours)
+        with self._lock:
+            for job_id, record in list(self._records.items()):
+                if (not record.downloads and record.job.status not in (JobStatus.queued, JobStatus.running)
+                        and record.job.updated_at < cutoff and not record.dir.exists()):
+                    self._records.pop(job_id)
+            if not self.data_dir.exists():
+                return
+            for folder in self.data_dir.iterdir():
+                if not re.fullmatch(r"[0-9a-f]{32}", folder.name):
+                    continue
+                if folder.is_symlink() or not folder.is_dir():
+                    continue
+                record = self._records.get(folder.name)
+                if record is not None:
+                    if record.downloads or record.job.status in (JobStatus.queued, JobStatus.running):
+                        continue
+                    timestamp = record.job.updated_at
+                else:
+                    timestamp = datetime.fromtimestamp(folder.stat().st_mtime, UTC)
+                if timestamp >= cutoff:
+                    continue
+                try:
+                    shutil.rmtree(folder)
+                except OSError:
+                    logging.getLogger(__name__).warning("job %s cleanup_failed", folder.name)
+                    continue
+                self._records.pop(folder.name, None)
 
     def create(self, job_input: JobInput, data: bytes) -> Job:
-        job_id = uuid.uuid4().hex
-        job_dir = self.data_dir / job_id
-        job_dir.mkdir(parents=True, exist_ok=True)
-        suffix = Path(job_input.filename).suffix.lower() or ".bin"
-        input_path = job_dir / f"input{suffix}"
-        input_path.write_bytes(data)
-        now = _now()
-        job = Job(
-            id=job_id,
-            status=JobStatus.queued,
-            revision=0,
-            created_at=now,
-            updated_at=now,
-            input=job_input,
-        )
+        self.cleanup()
         with self._lock:
+            job_id = uuid.uuid4().hex
+            job_dir = self.data_dir / job_id
+            job_dir.mkdir(parents=True, exist_ok=True)
+            suffix = Path(job_input.filename).suffix.lower() or ".bin"
+            input_path = job_dir / f"input{suffix}"
+            input_path.write_bytes(data)
+            now = _now()
+            job = Job(
+                id=job_id,
+                status=JobStatus.queued,
+                revision=0,
+                created_at=now,
+                updated_at=now,
+                input=job_input,
+            )
             self._records[job_id] = JobRecord(job=job, dir=job_dir, input_path=input_path)
         return job
 
     def get(self, job_id: str) -> JobRecord | None:
         with self._lock:
             return self._records.get(job_id)
+
+    def acquire_download(self, job_id: str) -> JobRecord | None:
+        """Pin the record and its files atomically with respect to TTL cleanup."""
+        with self._lock:
+            record = self._records.get(job_id)
+            if record is not None:
+                record.downloads += 1
+            return record
+
+    def release_download(self, job_id: str) -> None:
+        with self._lock:
+            self._records[job_id].downloads -= 1
 
     def update(self, job_id: str, **changes) -> Job:
         with self._lock:
@@ -101,7 +159,13 @@ class JobStore:
         self, job_id: str, supplement: SupplementRequest, removed: list[RemovedElement]
     ) -> Job:
         with self._lock:
-            record = self._records[job_id]
+            record = self._records.get(job_id)
+            if record is None:
+                # TTL cleanup can run while the API validates a supplement.
+                raise HTTPException(
+                    status_code=404,
+                    detail={"code": "job_not_found", "message": f"job {job_id!r} not found"},
+                )
             record.supplements.append(supplement)
             record.job = record.job.model_copy(
                 update={

@@ -44,3 +44,9 @@ recognition:
   building_link_factor: 1.0  # R5b: wall bodies closer than f * t are one body (a door gap is not a split)
   other_plan_ratio: 0.3  # R5b: a second body this share of the largest means several plans on the sheet
   max_opening_dist_factor: 20.0  # R9: a box farther than f * t from every wall is dropped, not attached
+
+jobs:
+  # Recognition slots per process (run one uvicorn worker).
+  max_concurrent: 1
+  # Finished jobs and orphan folders expire after this many hours.
+  ttl_hours: 72
