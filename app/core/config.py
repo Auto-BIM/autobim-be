@@ -43,6 +43,10 @@ class JobsSettings(BaseModel):
     ttl_hours: float = Field(default=72, gt=0, allow_inf_nan=False)
 
 
+class CorsSettings(BaseModel):
+    allow_origins: list[str] = Field(default_factory=lambda: ["*"])  # [] turns CORS off
+
+
 class RecognitionSettings(BaseModel):
     """Image-path recognition. Every length factor is relative to the drawing's wall thickness."""
 
@@ -66,6 +70,9 @@ class Settings(BaseModel):
     storage: StorageSettings = Field(default_factory=StorageSettings)
     limits: LimitsSettings = Field(default_factory=LimitsSettings)
     jobs: JobsSettings = Field(default_factory=JobsSettings)
+
+
+    cors: CorsSettings = Field(default_factory=CorsSettings)
     recognition: RecognitionSettings = Field(default_factory=RecognitionSettings)
 
     @property
@@ -96,6 +103,9 @@ def load_settings(path: str | Path | None = None) -> Settings:
     for env, field in _ENV_LIMIT_OVERRIDES.items():
         if value := os.environ.get(env):
             limits[field] = value  # validated (and coerced to int) with the rest of the file
+    if value := os.environ.get("AUTOBIM_CORS_ORIGINS"):
+        cors = raw["cors"] = raw.get("cors") or {}
+        cors["allow_origins"] = [origin.strip() for origin in value.split(",") if origin.strip()]
     models = raw["models"] = raw.get("models") or {}
     seg = models["seg"] = models.get("seg") or {}
     for env, field in _ENV_SEG_OVERRIDES.items():

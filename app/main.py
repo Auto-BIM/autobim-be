@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.jobs import router as jobs_router
 from app.core.config import ModelSettings, Settings, get_settings
@@ -32,6 +33,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=API_VERSION,
         description="2D floor plan (image/DXF) -> Plan -> 3D (.glb) / per-wall .dxf / JSON",
     )
+    if settings.cors.allow_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors.allow_origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     app.state.settings = settings
     app.state.store = JobStore(settings.data_dir, settings.jobs)
     app.state.models = build_models(settings.models)
