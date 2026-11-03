@@ -85,6 +85,7 @@ curl -s -o plan.json http://127.0.0.1:8000/api/jobs/<JOB>/files/json
 | `AUTOBIM_SEG_BUNDLE` | 없음 | `seg`가 읽을 모델 번들 폴더 |
 | `AUTOBIM_SEG_THREADS` | `2` | `seg`의 ONNX Runtime 스레드 수 |
 | `AUTOBIM_DATA_DIR` | `data/jobs` | 작업 파일 저장 위치 |
+| `AUTOBIM_CORS_ORIGINS` | `*` | 브라우저 호출을 허용할 출처. 쉼표로 구분(`http://localhost:5173,https://app.example.com`) |
 
 ## 테스트
 

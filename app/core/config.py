@@ -44,6 +44,10 @@ class LimitsSettings(BaseModel):
         return self.max_upload_mb * 1024 * 1024
 
 
+class CorsSettings(BaseModel):
+    allow_origins: list[str] = Field(default_factory=lambda: ["*"])  # [] turns CORS off
+
+
 class RecognitionSettings(BaseModel):
     """Image-path recognition. Every length factor is relative to the drawing's wall thickness."""
 
@@ -66,6 +70,7 @@ class Settings(BaseModel):
     models: ModelSettings = Field(default_factory=ModelSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     limits: LimitsSettings = Field(default_factory=LimitsSettings)
+    cors: CorsSettings = Field(default_factory=CorsSettings)
     recognition: RecognitionSettings = Field(default_factory=RecognitionSettings)
 
     @property
@@ -100,6 +105,9 @@ def load_settings(path: str | Path | None = None) -> Settings:
     for env, field in _ENV_LIMIT_OVERRIDES.items():
         if value := os.environ.get(env):
             limits[field] = value  # validated (and coerced to int) with the rest of the file
+    if value := os.environ.get("AUTOBIM_CORS_ORIGINS"):
+        cors = raw["cors"] = raw.get("cors") or {}
+        cors["allow_origins"] = [origin.strip() for origin in value.split(",") if origin.strip()]
     models = raw["models"] = raw.get("models") or {}
     seg = models["seg"] = models.get("seg") or {}
     for env, field in _ENV_SEG_OVERRIDES.items():
