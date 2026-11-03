@@ -380,15 +380,15 @@ open http://localhost:8080
 
 한 번에 확인하려면 `deploy/smoke.sh http://localhost:8080 <이미지>`.
 
-### 프론트가 붙으려면 (CORS 없음)
+### 프론트가 붙으려면 (CORS)
 
-백엔드에 CORS 설정이 없다. 설계가 "Caddy 하나가 프론트와 `/api`를 같은 출처로 제공"([DECISIONS P-05](project/DECISIONS.md))이기 때문이다. 그래서 API 주소만 넘기면 되는 것은 아니다.
+백엔드가 CORS를 연다(`CORSMiddleware`). 기본값은 모든 출처 허용(`*`)이라 따로 설정할 것이 없다. 출처를 좁히려면 `config/settings.yaml`의 `cors.allow_origins`를 고친다(이미지에 들어가므로 다시 빌드). `AUTOBIM_CORS_ORIGINS`는 `docker-compose.prod.yml`에 연결돼 있지 않아 `deploy/.env`에 써도 컨테이너에 닿지 않는다. 설계의 기본 구성은 "Caddy 하나가 프론트와 `/api`를 같은 출처로 제공"([DECISIONS P-05](project/DECISIONS.md))이라 그 구성에서는 쓰이지 않는다.
 
 | 방법 | 되는가 | 비고 |
 |---|---|---|
 | 프론트를 이 서버에 올림(§8) | O | 같은 출처라 설정 불필요. 시연 구성 |
 | 프론트 개발 서버 프록시(`/api` → 이 서버 `:8080`) | O | Vite `server.proxy` 등. 브라우저는 같은 출처로 본다 |
-| 다른 주소에서 브라우저가 직접 호출 | **X** | CORS 헤더가 없어 막힌다. 필요하면 계약이 아닌 설정 PR로 `CORSMiddleware` 추가 |
+| 다른 주소에서 브라우저가 직접 호출 | O | CORS 헤더가 붙는다. 출처를 좁혔다면 그 목록에 프론트 주소가 있어야 한다 |
 | HTTPS 페이지에서 `http://…:8080` 호출 | **X** | 혼합 콘텐츠. 지금은 HTTP만 연다(O-04 도메인·HTTPS 미결) |
 
 그 밖에 알아 둘 것:

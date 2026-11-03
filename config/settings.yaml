@@ -27,6 +27,11 @@ limits:
   # image width * height, judged from the header only
   max_pixels: 40000000
 
+cors:
+  # Browser origins allowed to call the API, e.g. ["http://localhost:5173"]. ["*"] = any origin
+  # (no cookies are used). [] turns CORS off. Override with AUTOBIM_CORS_ORIGINS (comma-separated).
+  allow_origins: ["*"]
+
 recognition:
   # detections below this confidence become review items
   review_confidence_threshold: 0.5
