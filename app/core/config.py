@@ -83,6 +83,10 @@ _ENV_SEG_OVERRIDES = {
     "AUTOBIM_SEG_BUNDLE": "bundle_dir",
     "AUTOBIM_SEG_THREADS": "threads",
 }
+_ENV_REPLAY_OVERRIDES = {
+    "AUTOBIM_REPLAY_PACK": "pack_dir",
+    "AUTOBIM_REPLAY_VARIANT": "variant",
+}
 _ENV_LIMIT_OVERRIDES = {
     "AUTOBIM_MAX_UPLOAD_MB": "max_upload_mb",
     "AUTOBIM_MAX_PIXELS": "max_pixels",
@@ -102,10 +106,7 @@ def load_settings(path: str | Path | None = None) -> Settings:
         if value := os.environ.get(env):
             seg[field] = value  # validated (and coerced to int) with the rest of the file
     replay = models["replay"] = models.get("replay") or {}
-    for env, field in {
-        "AUTOBIM_REPLAY_PACK": "pack_dir",
-        "AUTOBIM_REPLAY_VARIANT": "variant",
-    }.items():
+    for env, field in _ENV_REPLAY_OVERRIDES.items():
         if value := os.environ.get(env):
             replay[field] = value
     settings = Settings.model_validate(raw)

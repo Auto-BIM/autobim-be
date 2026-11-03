@@ -68,6 +68,9 @@ def _pick(table: dict, name: str, role: str, settings: ModelSettings, cache: Cac
 
 
 def build_models(settings: ModelSettings) -> Models:
+    if "replay" in (settings.wall_segmenter, settings.opening_detector):
+        if settings.dimension_reader == "fake":
+            raise ValueError("replay cannot use dimension_reader='fake'; set dimension_reader='none'")
     cache: Cache = {}
     return Models(
         wall_segmenter=_pick(
