@@ -27,13 +27,24 @@ def _shared_seg(s: ModelSettings, cache: Cache):
     return cache["seg"]
 
 
+def _shared_replay(s: ModelSettings, cache: Cache):
+    """Share one evaluation-pack adapter across the two recognition roles."""
+    if "replay" not in cache:
+        from app.models.replay import ReplayModel
+
+        cache["replay"] = ReplayModel(s.replay.pack_dir, s.replay.variant)
+    return cache["replay"]
+
+
 WALL_SEGMENTERS: dict[str, Callable[[ModelSettings, Cache], WallSegmenter]] = {
     "fake": lambda s, c: FakeWallSegmenter(),
     "seg": _shared_seg,
+    "replay": _shared_replay,
 }
 OPENING_DETECTORS: dict[str, Callable[[ModelSettings, Cache], OpeningDetector]] = {
     "fake": lambda s, c: FakeOpeningDetector(),
     "seg": _shared_seg,
+    "replay": _shared_replay,
 }
 DIMENSION_READERS: dict[str, Callable[[ModelSettings, Cache], DimensionReader]] = {
     "fake": lambda s, c: FakeDimensionReader(),

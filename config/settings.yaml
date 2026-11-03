@@ -16,6 +16,11 @@ models:
     # model bundle folder (model.onnx + model.json + pkg/autobim_seg); put <bundle>/pkg on PYTHONPATH
     bundle_dir: null
     threads: 2
+  replay:
+    # Evaluation pack; AUTOBIM_REPLAY_PACK / AUTOBIM_REPLAY_VARIANT override these.
+    # Select replay for both recognition roles and none for dimension_reader.
+    pack_dir: null
+    variant: gt  # gt | pred/<bundle name>
 
 storage:
   # relative paths are resolved against the repo root. Override with AUTOBIM_DATA_DIR.
