@@ -400,12 +400,12 @@ open http://localhost:8080
 
 ## 14. 자동 배포 (CD, `main`)
 
-`.github/workflows/ci.yml`의 `deploy` 잡이 한다.
+`.github/workflows/cd.yml`이 한다. 검사는 `ci.yml`이 한다.
 
 | 브랜치·이벤트 | 하는 일 |
 |---|---|
-| PR, `develop` 푸시 | CI만 (`test`, `docker`, `deploy-stack`) |
-| `main` 푸시 | CI 세 잡이 통과하면 `deploy` 잡이 VM에 SSH로 접속해 `deploy/deploy.sh main`을 실행한다. health 확인이 실패하면 잡이 실패한다 |
+| PR, `develop` 푸시 | `ci.yml`만 (`test`, `docker`, `deploy-stack`) |
+| `main` 푸시 | `cd.yml`이 `ci.yml`을 호출한다. 세 잡이 통과하면 `deploy` 잡이 VM에 SSH로 접속해 `deploy/deploy.sh main`을 실행한다. health 확인이 실패하면 잡이 실패한다 |
 
 - `main` 푸시마다 `api`가 재시작된다. §9의 재시작 주의가 그대로 적용된다.
 - `main`에 같은 푸시가 연달아 오면 앞 실행이 끝난 뒤에 다음이 시작한다(진행 중인 배포를 취소하지 않는다).

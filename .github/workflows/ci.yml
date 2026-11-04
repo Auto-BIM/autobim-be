@@ -3,12 +3,12 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, develop]
+    branches: [develop]
+  workflow_call:  # cd.yml runs these checks before deploying main
 
 concurrency:
   group: ci-${{ github.ref }}
-  # A newer push to main waits instead of cancelling a run that may be deploying.
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -102,28 +102,3 @@ jobs:
       - name: Logs on failure
         if: failure()
         run: $COMPOSE logs --tail 200
-
-  deploy:
-    # CD for main only: develop and pull requests stop at the checks above. Runs
-    # deploy/deploy.sh on the OCI VM over SSH; it fails the job if the health check fails.
-    # The `production` environment holds the secrets and limits which branches can read them.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [test, docker, deploy-stack]
-    runs-on: ubuntu-latest
-    environment: production
-    timeout-minutes: 30
-    env:
-      OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
-      OCI_KNOWN_HOSTS: ${{ secrets.OCI_KNOWN_HOSTS }}
-      OCI_TARGET: ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }}
-    steps:
-      - name: Prepare SSH
-        run: |
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_deploy
-          printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
-      - name: Deploy main
-        run: |
-          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            "$OCI_TARGET" 'cd /opt/autobim/src/autobim-be && deploy/deploy.sh main'

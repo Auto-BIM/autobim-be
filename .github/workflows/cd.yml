@@ -1,0 +1,37 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: cd-main
+  # A newer push waits instead of cancelling a deploy that is already running.
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    # Runs deploy/deploy.sh on the OCI VM over SSH; it fails the job if the health check fails.
+    # The `production` environment holds the secrets and limits which branches can read them.
+    needs: ci
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    env:
+      OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
+      OCI_KNOWN_HOSTS: ${{ secrets.OCI_KNOWN_HOSTS }}
+      OCI_TARGET: ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }}
+    steps:
+      - name: Prepare SSH
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+      - name: Deploy main
+        run: |
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$OCI_TARGET" 'cd /opt/autobim/src/autobim-be && deploy/deploy.sh main'
