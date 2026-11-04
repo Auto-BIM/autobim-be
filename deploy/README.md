@@ -22,6 +22,7 @@ deploy/smoke.sh http://localhost
 
 처음이면 프론트 자리(`/opt/autobim/fe/current`)를 먼저 만든다(런북 §6). 밖에서 `http://<공인 IP>/health`가 200이면 끝.
 **시연 기간에는 재시작하지 않는다.** 작업 목록이 메모리에 있어 재시작하면 기존 작업 링크가 404가 된다.
+`main` 푸시는 CI 통과 뒤 CD가 `deploy.sh main`을 자동 실행한다(런북 §14). `develop`은 CI만 돈다.
 
 ## 모델 교체·롤백 (런북 §7)
 

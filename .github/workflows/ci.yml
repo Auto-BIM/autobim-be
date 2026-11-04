@@ -3,7 +3,8 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main, develop]
+    branches: [develop]
+  workflow_call:  # cd.yml runs these checks before deploying main
 
 concurrency:
   group: ci-${{ github.ref }}
