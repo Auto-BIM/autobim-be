@@ -11,7 +11,8 @@ from fastapi.responses import FileResponse
 from PIL import Image
 
 from app.core.config import LimitsSettings
-from app.jobs.runner import run_job
+from app.jobs.download import JobFileResponse
+from app.jobs.runner import run_job_background
 from app.jobs.store import JobRecord, JobStore
 from app.jobs.supplement import SupplementError, replay_supplements
 from app.schemas.jobs import ErrorResponse, FileKind, Job, JobInput, JobStatus, SupplementRequest
@@ -80,7 +81,7 @@ def _image_too_large(size: str, limits: LimitsSettings) -> HTTPException:
 
 def _schedule(request: Request, background: BackgroundTasks, job_id: str) -> None:
     state = request.app.state
-    background.add_task(run_job, state.store, job_id, state.models, state.settings)
+    background.add_task(run_job_background, state.store, job_id, state.models, state.settings)
 
 
 @router.post(
@@ -165,8 +166,18 @@ def supplement_job(
     summary="Download an output file (dxf | glb | json)",
 )
 def get_job_file(request: Request, job_id: str, kind: FileKind) -> FileResponse:
-    record = _record(request, job_id)
-    path = record.outputs.get(kind)  # last successful revision, even while regenerating
-    if path is None:
-        raise _error(409, "not_ready", f"job is {record.job.status.value}; no files yet")
-    return FileResponse(path, media_type=MEDIA_TYPES[kind], filename=f"{job_id}.{kind.value}")
+    store = _store(request)
+    record = store.acquire_download(job_id)
+    if record is None:
+        raise _error(404, "job_not_found", f"job {job_id!r} not found")
+    try:
+        path = record.outputs.get(kind)  # last successful revision, even while regenerating
+        if path is None:
+            raise _error(409, "not_ready", f"job is {record.job.status.value}; no files yet")
+        return JobFileResponse(
+            path, store=store, job_id=job_id,
+            media_type=MEDIA_TYPES[kind], filename=f"{job_id}.{kind.value}",
+        )
+    except BaseException:
+        store.release_download(job_id)
+        raise

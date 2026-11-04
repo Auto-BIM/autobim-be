@@ -44,6 +44,11 @@ class LimitsSettings(BaseModel):
         return self.max_upload_mb * 1024 * 1024
 
 
+class JobsSettings(BaseModel):
+    max_concurrent: int = Field(default=1, gt=0)
+    ttl_hours: float = Field(default=72, gt=0, le=24 * 365 * 100, allow_inf_nan=False)
+
+
 class CorsSettings(BaseModel):
     allow_origins: list[str] = Field(default_factory=lambda: ["*"])  # [] turns CORS off
 
@@ -70,6 +75,9 @@ class Settings(BaseModel):
     models: ModelSettings = Field(default_factory=ModelSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     limits: LimitsSettings = Field(default_factory=LimitsSettings)
+    jobs: JobsSettings = Field(default_factory=JobsSettings)
+
+
     cors: CorsSettings = Field(default_factory=CorsSettings)
     recognition: RecognitionSettings = Field(default_factory=RecognitionSettings)
 
