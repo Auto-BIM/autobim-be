@@ -301,7 +301,7 @@ ln -sfn releases/$TS /opt/autobim/fe/current     # 즉시 반영, 재시작 불�
 |---|---|
 | 상태 | `docker compose -f deploy/docker-compose.prod.yml ps`, `docker stats --no-stream` |
 | 로그 | `docker compose -f deploy/docker-compose.prod.yml logs -f --tail 200 api` |
-| 백엔드 갱신 | `deploy/deploy.sh develop` (시연 기간에는 태그: `deploy/deploy.sh v1.0.0`) |
+| 백엔드 갱신 | `main` 푸시는 CD가 자동으로 한다(§14). 손으로는 `deploy/deploy.sh main` (시연 기간에는 태그: `deploy/deploy.sh v1.0.0`) |
 | 디스크 | `df -h /`, `docker system df`. 오래된 이미지 정리 `docker image prune -f` |
 | 작업 파일 | TTL 정리(#13 (BE-N4)) 전에는 `docker volume inspect autobim_jobs`로 경로를 찾아 직접 확인 |
 | 백업 | 콘솔 → Block Storage → Boot Volumes → 이 VM 부트 볼륨 → Create manual backup. **G4(12/11)와 시연 전날** |
@@ -397,3 +397,31 @@ open http://localhost:8080
 - 컨테이너를 재시작하면 작업이 사라져 이전 `id`가 404가 된다(#4). 시연 중에는 재시작하지 않는다(§9).
 - Fake 모델이 아닌 실제 모델이라 결과는 도면마다 다르다. 알려진 오류는 #27.
 
+
+## 14. 자동 배포 (CD, `main`)
+
+`.github/workflows/ci.yml`의 `deploy` 잡이 한다.
+
+| 브랜치·이벤트 | 하는 일 |
+|---|---|
+| PR, `develop` 푸시 | CI만 (`test`, `docker`, `deploy-stack`) |
+| `main` 푸시 | CI 세 잡이 통과하면 `deploy` 잡이 VM에 SSH로 접속해 `deploy/deploy.sh main`을 실행한다. health 확인이 실패하면 잡이 실패한다 |
+
+- `main` 푸시마다 `api`가 재시작된다. §9의 재시작 주의가 그대로 적용된다.
+- `main`에 같은 푸시가 연달아 오면 앞 실행이 끝난 뒤에 다음이 시작한다(진행 중인 배포를 취소하지 않는다).
+- 시크릿은 레포 설정의 Environment `production`에 둔다.
+
+| 시크릿 | 내용 |
+|---|---|
+| `OCI_HOST` | VM 공인 IP |
+| `OCI_USER` | 접속 사용자 (`ubuntu`) |
+| `OCI_SSH_KEY` | 배포 전용 개인 키. 개인 SSH 키는 쓰지 않는다 |
+| `OCI_KNOWN_HOSTS` | VM의 호스트 키 한 줄 (`ssh-keyscan` 형식) |
+
+```bash
+# 배포 전용 키 만들기 (노트북). 공개 키(.pub)를 VM의 ~/.ssh/authorized_keys에 한 줄 추가하고,
+# 개인 키 파일 내용은 `gh secret set OCI_SSH_KEY --env production < 파일`로만 넣는다
+ssh-keygen -t ed25519 -N '' -C autobim-be-cd -f ./autobim-cd-key
+# VM 호스트 키 (VM에서 직접 읽는다)
+cat /etc/ssh/ssh_host_ed25519_key.pub     # 앞에 "<IP> "를 붙인 한 줄이 OCI_KNOWN_HOSTS
+```
