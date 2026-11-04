@@ -18,11 +18,17 @@ class SegSettings(BaseModel):
     threads: int = Field(default=2, gt=0)  # ONNX Runtime intra-op threads
 
 
+class ReplaySettings(BaseModel):
+    pack_dir: str | None = None
+    variant: str = "gt"
+
+
 class ModelSettings(BaseModel):
     wall_segmenter: str = "fake"
     opening_detector: str = "fake"
     dimension_reader: str = "fake"
     seg: SegSettings = Field(default_factory=SegSettings)
+    replay: ReplaySettings = Field(default_factory=ReplaySettings)
 
 
 class StorageSettings(BaseModel):
@@ -36,6 +42,11 @@ class LimitsSettings(BaseModel):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+
+class JobsSettings(BaseModel):
+    max_concurrent: int = Field(default=1, gt=0)
+    ttl_hours: float = Field(default=72, gt=0, le=24 * 365 * 100, allow_inf_nan=False)
 
 
 class CorsSettings(BaseModel):
@@ -64,6 +75,9 @@ class Settings(BaseModel):
     models: ModelSettings = Field(default_factory=ModelSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     limits: LimitsSettings = Field(default_factory=LimitsSettings)
+    jobs: JobsSettings = Field(default_factory=JobsSettings)
+
+
     cors: CorsSettings = Field(default_factory=CorsSettings)
     recognition: RecognitionSettings = Field(default_factory=RecognitionSettings)
 
@@ -81,6 +95,10 @@ _ENV_MODEL_OVERRIDES = {
 _ENV_SEG_OVERRIDES = {
     "AUTOBIM_SEG_BUNDLE": "bundle_dir",
     "AUTOBIM_SEG_THREADS": "threads",
+}
+_ENV_REPLAY_OVERRIDES = {
+    "AUTOBIM_REPLAY_PACK": "pack_dir",
+    "AUTOBIM_REPLAY_VARIANT": "variant",
 }
 _ENV_LIMIT_OVERRIDES = {
     "AUTOBIM_MAX_UPLOAD_MB": "max_upload_mb",
@@ -103,6 +121,10 @@ def load_settings(path: str | Path | None = None) -> Settings:
     for env, field in _ENV_SEG_OVERRIDES.items():
         if value := os.environ.get(env):
             seg[field] = value  # validated (and coerced to int) with the rest of the file
+    replay = models["replay"] = models.get("replay") or {}
+    for env, field in _ENV_REPLAY_OVERRIDES.items():
+        if value := os.environ.get(env):
+            replay[field] = value
     settings = Settings.model_validate(raw)
     for env, field in _ENV_MODEL_OVERRIDES.items():
         if value := os.environ.get(env):

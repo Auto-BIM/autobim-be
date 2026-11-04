@@ -41,7 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_headers=["*"],
         )
     app.state.settings = settings
-    app.state.store = JobStore(settings.data_dir)
+    app.state.store = JobStore(settings.data_dir, settings.jobs)
     app.state.models = build_models(settings.models)
     app.include_router(jobs_router)
 

@@ -5,13 +5,13 @@ from __future__ import annotations
 import io
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 def load_image(data: bytes) -> np.ndarray:
     """Decode an uploaded image into an (H, W, 3) uint8 RGB array."""
     with Image.open(io.BytesIO(data)) as img:
-        return np.asarray(img.convert("RGB"), dtype=np.uint8)
+        return np.asarray(ImageOps.exif_transpose(img).convert("RGB"), dtype=np.uint8)
 
 
 def preprocess(image: np.ndarray) -> np.ndarray:

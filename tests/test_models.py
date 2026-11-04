@@ -1,3 +1,5 @@
+import hashlib
+import io
 import json
 import os
 import subprocess
@@ -11,17 +13,370 @@ from pathlib import Path
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.core.config import ModelSettings, SegSettings, Settings, StorageSettings, load_settings
 from app.main import create_app
 from app.models.base import BBox, OpeningDetection
 from app.models.fake import FakeDimensionReader, FakeOpeningDetector, FakeWallSegmenter
 from app.models.registry import build_models
+from app.models.replay import ReplayModel
 from app.models.seg import RECENT_IMAGES, SegBundleError, SegModel
+from app.preprocess.image import load_image, preprocess
 from app.recognition.pipeline import image_to_plan
 from app.schemas.plan import OpeningType
 
 IMG = np.zeros((16, 16, 3), np.uint8)
+
+
+@pytest.fixture
+def replay_pack(tmp_path):
+    """Two images, including grayscale input, with distinct gt and predicted results."""
+    pack = tmp_path / "pack"
+    (pack / "images").mkdir(parents=True)
+    manifest, samples = [], []
+    for index in range(2):
+        image = Image.new("L" if index == 0 else "RGB", (100, 64), 255 - index)
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        data = buffer.getvalue()
+        (pack / "images" / f"{index}.png").write_bytes(data)
+        # Independent RGB decoding is the model-side pack producer's hash convention.
+        sha1 = hashlib.sha1(np.asarray(image.convert("RGB")).tobytes()).hexdigest()
+        manifest.append(
+            dict(id=str(index), image=f"images/{index}.png", sha1=sha1,
+                 width=100, height=64, split="tune")
+        )
+        variants = {}
+        for variant in ("gt", "pred/seg-v1"):
+            labels = np.zeros((64, 100), np.uint8)
+            labels[4:60, 10:14] = labels[4:60, 86:90] = 1
+            labels[4:8, 10:90] = labels[56:60, 10:90] = 1
+            labels[0, :4] = [0, 2, 3, 255]
+            if variant != "gt":
+                labels[30, 10] = 0
+            # Distinct walls per image catch adapters that replay the wrong manifest entry.
+            labels = np.roll(labels, index, axis=1)
+            boxes = [
+                {"type": "door", "bbox": [40 + index, 3, 60, 9], "conf": 0.8},
+                {"type": "window", "bbox": [85, 20, 91, 35], "conf": 0.9},
+            ] if variant == "gt" else []
+            for folder in ("labels", "openings"):
+                (pack / folder / variant).mkdir(parents=True, exist_ok=True)
+            Image.fromarray(labels).save(pack / "labels" / variant / f"{sha1}.png")
+            (pack / "openings" / variant / f"{sha1}.json").write_text(
+                json.dumps(boxes), encoding="utf-8"
+            )
+            variants[variant] = (labels, boxes)
+        samples.append((data, sha1, variants))
+    (pack / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return pack, samples
+
+
+@pytest.mark.parametrize("variant", ["gt", "pred/seg-v1"])
+def test_replay_matches_pack(replay_pack, variant):
+    pack, samples = replay_pack
+    model = ReplayModel(pack, variant)
+    for data, _, variants in samples:
+        image = load_image(data)
+        labels, boxes = variants[variant]
+        wall = model.segment(image)
+        assert wall.mask.dtype == bool
+        np.testing.assert_array_equal(wall.mask, labels == 1)
+        assert wall.confidence == 1.0
+        assert model.detect(image) == [
+            OpeningDetection(OpeningType(box["type"]), BBox(*box["bbox"]), box["conf"])
+            for box in boxes
+        ]
+
+
+def test_replay_registry_shares_instance(replay_pack):
+    pack, _ = replay_pack
+    settings = ModelSettings(
+        wall_segmenter="replay", opening_detector="replay", dimension_reader="none",
+        replay={"pack_dir": str(pack)},
+    )
+    models = build_models(settings)
+    assert isinstance(models.wall_segmenter, ReplayModel)
+    assert models.wall_segmenter is models.opening_detector
+    assert build_models(settings).wall_segmenter is not models.wall_segmenter
+    settings.wall_segmenter = "fake"
+    assert isinstance(build_models(settings).opening_detector, ReplayModel)
+    settings.wall_segmenter, settings.opening_detector = "replay", "fake"
+    assert isinstance(build_models(settings).opening_detector, FakeOpeningDetector)
+
+
+def test_replay_settings_and_env(tmp_path, monkeypatch):
+    monkeypatch.delenv("AUTOBIM_REPLAY_PACK", raising=False)
+    monkeypatch.delenv("AUTOBIM_REPLAY_VARIANT", raising=False)
+    config = tmp_path / "settings.yaml"
+    config.write_text(
+        'models:\n  replay:\n    pack_dir: /packs/dev\n    variant: pred/seg-v1\n',
+        encoding="utf-8",
+    )
+    replay = load_settings(config).models.replay
+    assert (replay.pack_dir, replay.variant) == ("/packs/dev", "pred/seg-v1")
+    monkeypatch.setenv("AUTOBIM_REPLAY_PACK", "/packs/other")
+    monkeypatch.setenv("AUTOBIM_REPLAY_VARIANT", "gt")
+    monkeypatch.setenv("AUTOBIM_WALL_SEGMENTER", "replay")
+    settings = load_settings(config)
+    assert (settings.models.replay.pack_dir, settings.models.replay.variant) == ("/packs/other", "gt")
+    assert settings.models.wall_segmenter == "replay"
+
+
+def test_replay_unknown_image(replay_pack):
+    pack, _ = replay_pack
+    model = ReplayModel(pack)
+    expected = f"이미지가 평가 팩에 없음: sha1={hashlib.sha1(IMG.tobytes()).hexdigest()}"
+    for call in (model.segment, model.detect):
+        with pytest.raises(ValueError) as error:
+            call(IMG)
+        assert str(error.value) == expected
+
+
+@pytest.mark.parametrize("variant", [
+    "../gt", "pred/..", "pred/.", "pred/a/b", "pred\\a", "", "pred/", "pred/seg v1",
+    "pred/ seg-v1", "pred/seg-v1 ", "pred/seg\nv1", "pred/seg\tv1",
+])
+def test_replay_invalid_variant(replay_pack, variant):
+    with pytest.raises(ValueError, match="variant"):
+        ReplayModel(replay_pack[0], variant)
+
+
+def test_replay_missing_pack():
+    with pytest.raises(ValueError, match="AUTOBIM_REPLAY_PACK"):
+        ReplayModel(None)
+
+
+def test_replay_bad_label_shape(replay_pack):
+    pack, samples = replay_pack
+    data, sha1, _ = samples[0]
+    Image.new("L", (2, 2)).save(pack / "labels" / "gt" / f"{sha1}.png")
+    with pytest.raises(ValueError, match="labels must be"):
+        ReplayModel(pack).segment(load_image(data))
+
+
+@pytest.mark.parametrize("variant", ["gt", "pred/seg-v1"])
+def test_replay_jobs_api(replay_pack, tmp_path, variant):
+    pack, samples = replay_pack
+    settings = Settings(
+        models=ModelSettings(
+            wall_segmenter="replay", opening_detector="replay", dimension_reader="none",
+            replay={"pack_dir": str(pack), "variant": variant},
+        ),
+        storage=StorageSettings(data_dir=str(tmp_path / "jobs")),
+    )
+    with TestClient(create_app(settings)) as client:
+        for data, _, _ in samples:
+            response = client.post("/api/jobs", files={"file": ("plan.png", data, "image/png")})
+            assert response.status_code == 202
+            job = client.get(f"/api/jobs/{response.json()['id']}").json()
+            assert job["status"] == "succeeded", job
+            assert len(job["plan"]["walls"]) == 4
+            types = sorted(opening["type"] for opening in job["plan"]["openings"])
+            assert types == (["door", "window"] if variant == "gt" else [])
+        buffer = io.BytesIO()
+        Image.new("RGB", (100, 64), "red").save(buffer, format="PNG")
+        response = client.post(
+            "/api/jobs", files={"file": ("unknown.png", buffer.getvalue(), "image/png")}
+        )
+        assert response.status_code == 202
+        job = client.get(f"/api/jobs/{response.json()['id']}").json()
+        assert job["status"] == "failed"
+        assert job["error"]["code"] == "internal_error"
+        assert "이미지가 평가 팩에 없음: sha1=" in job["error"]["message"]
+
+
+@pytest.mark.parametrize("wall,opening", [("replay", "replay"), ("replay", "fake"), ("fake", "replay")])
+def test_replay_rejects_fake_dimensions_at_startup(tmp_path, wall, opening):
+    settings = Settings(
+        models=ModelSettings(wall_segmenter=wall, opening_detector=opening),
+        storage=StorageSettings(data_dir=str(tmp_path / "jobs")),
+    )
+    with pytest.raises(ValueError, match="dimension_reader='fake'.*dimension_reader='none'"):
+        create_app(settings)
+
+
+@pytest.mark.parametrize("folder", ["labels", "openings"])
+def test_replay_missing_variant_directory_fails_at_startup(replay_pack, tmp_path, folder):
+    pack, _ = replay_pack
+    path = pack / folder / "gt"
+    path.rename(path.with_name("missing-gt"))
+    settings = Settings(
+        models=ModelSettings(
+            wall_segmenter="replay", opening_detector="replay", dimension_reader="none",
+            replay={"pack_dir": str(pack)},
+        ),
+        storage=StorageSettings(data_dir=str(tmp_path / "jobs")),
+    )
+    with pytest.raises(ValueError, match="variant directory missing") as error:
+        create_app(settings)
+    assert str(path) in str(error.value)
+
+
+def test_replay_unavailable_pred_variant(replay_pack):
+    pack, _ = replay_pack
+    with pytest.raises(ValueError, match="variant directory missing") as error:
+        ReplayModel(pack, "pred/seg-v2")
+    assert str(pack / "labels/pred/seg-v2") in str(error.value)
+
+
+def test_replay_missing_manifest(replay_pack):
+    pack, _ = replay_pack
+    path = pack / "manifest.json"
+    path.unlink()
+    with pytest.raises(ValueError, match="cannot read evaluation pack JSON") as error:
+        ReplayModel(pack)
+    assert str(path) in str(error.value)
+
+
+@pytest.mark.parametrize("field", ["sha1", "height", "width"])
+def test_replay_manifest_missing_field(replay_pack, field):
+    pack, _ = replay_pack
+    path = pack / "manifest.json"
+    manifest = json.loads(path.read_text())
+    del manifest[1][field]
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="manifest missing") as error:
+        ReplayModel(pack)
+    assert all(value in str(error.value) for value in (str(path), "entry 1", field))
+
+
+@pytest.mark.parametrize("content,message", [
+    ("{", "cannot read evaluation pack JSON"),
+    ("{}", "JSON must be a list"),
+    ("[null]", "entry must be an object"),
+])
+def test_replay_invalid_manifest_json(replay_pack, content, message):
+    pack, _ = replay_pack
+    path = pack / "manifest.json"
+    path.write_text(content, encoding="utf-8")
+    with pytest.raises(ValueError, match=message) as error:
+        ReplayModel(pack)
+    assert str(path) in str(error.value)
+
+
+@pytest.mark.parametrize("field,value,message", [
+    ("sha1", "../invalid", "sha1 must be"),
+    ("sha1", 123, "sha1 must be"),
+    ("height", 0, "positive integers"),
+    ("width", True, "positive integers"),
+    ("width", "100", "positive integers"),
+])
+def test_replay_invalid_manifest_values(replay_pack, field, value, message):
+    pack, _ = replay_pack
+    path = pack / "manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest[0][field] = value
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match=message) as error:
+        ReplayModel(pack)
+    assert str(path) in str(error.value) and "entry 0" in str(error.value)
+
+
+def test_replay_conflicting_duplicate_manifest_dimensions(replay_pack):
+    pack, _ = replay_pack
+    path = pack / "manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest.append({**manifest[0], "height": manifest[0]["height"] + 1})
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="conflicting dimensions") as error:
+        ReplayModel(pack)
+    assert str(path) in str(error.value) and "entry 2" in str(error.value)
+
+
+@pytest.mark.parametrize("folder,suffix", [("labels", "png"), ("openings", "json")])
+def test_replay_missing_sample_file(replay_pack, folder, suffix):
+    pack, samples = replay_pack
+    path = pack / folder / "gt" / f"{samples[0][1]}.{suffix}"
+    path.unlink()
+    with pytest.raises(ValueError, match="evaluation pack file missing") as error:
+        ReplayModel(pack)
+    assert str(path) in str(error.value) and "entry 0" in str(error.value)
+
+
+def test_replay_image_dimensions_mismatch(replay_pack):
+    pack, samples = replay_pack
+    path = pack / "manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest[0]["height"] += 1
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    model = ReplayModel(pack)
+    for call in (model.segment, model.detect):
+        with pytest.raises(ValueError, match="image dimensions mismatch") as error:
+            call(load_image(samples[0][0]))
+        assert samples[0][1] in str(error.value)
+
+
+@pytest.mark.parametrize("kind", ["uint16", "bool", "corrupt"])
+def test_replay_invalid_label_file(replay_pack, kind):
+    pack, samples = replay_pack
+    data, sha1, variants = samples[0]
+    path = pack / "labels/gt" / f"{sha1}.png"
+    labels = variants["gt"][0]
+    if kind == "corrupt":
+        path.write_bytes(b"not a PNG")
+    else:
+        Image.fromarray(labels.astype(kind)).save(path)
+    with pytest.raises(ValueError, match="labels") as error:
+        ReplayModel(pack).segment(load_image(data))
+    assert str(path) in str(error.value)
+
+
+@pytest.mark.parametrize("item", [
+    None, {},
+    {"type": "door", "bbox": [0, 0, 2, 2]},
+    {"type": "door", "bbox": [0, 0, 2], "conf": 1},
+    {"type": "door", "bbox": "0123", "conf": 1},
+    {"type": "door", "bbox": None, "conf": 1},
+    {"type": "door", "bbox": [0, 0, 2, None], "conf": 1},
+    {"type": "door", "bbox": [2, 0, 1, 2], "conf": 1},
+    {"type": "door", "bbox": [0, 0, 2, float("inf")], "conf": 1},
+    {"type": "door", "bbox": [0, 0, 2, 2], "conf": float("nan")},
+    {"type": "door", "bbox": [0, 0, 2, 2], "conf": 1.5},
+    {"type": "wall", "bbox": [0, 0, 2, 2], "conf": 1},
+])
+def test_replay_invalid_opening_has_file_and_entry_context(replay_pack, item):
+    pack, samples = replay_pack
+    data, sha1, _ = samples[0]
+    path = pack / "openings/gt" / f"{sha1}.json"
+    path.write_text(json.dumps([item]), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid evaluation pack opening") as error:
+        ReplayModel(pack).detect(load_image(data))
+    assert str(path) in str(error.value) and "entry 0" in str(error.value)
+
+
+@pytest.mark.parametrize("content", ["{", "{}"])
+def test_replay_invalid_openings_json(replay_pack, content):
+    pack, samples = replay_pack
+    data, sha1, _ = samples[0]
+    path = pack / "openings/gt" / f"{sha1}.json"
+    path.write_text(content, encoding="utf-8")
+    with pytest.raises(ValueError, match="JSON") as error:
+        ReplayModel(pack).detect(load_image(data))
+    assert str(path) in str(error.value)
+
+
+@pytest.mark.parametrize("mode", ["L", "RGB"])
+def test_replay_preprocess_preserves_decoded_rgb_hash(mode):
+    pixels = np.arange(18 * 27 * 3, dtype=np.uint8).reshape(18, 27, 3)
+    buffer = io.BytesIO()
+    Image.fromarray(pixels).convert(mode).save(buffer, format="PNG")
+    image = load_image(buffer.getvalue())
+    expected = hashlib.sha1(image.tobytes()).hexdigest()
+    processed = preprocess(image)
+    assert processed.shape == image.shape and processed.dtype == image.dtype
+    assert hashlib.sha1(processed.tobytes()).hexdigest() == expected
+
+
+def test_replay_hashes_noncontiguous_rgb(replay_pack):
+    pack, samples = replay_pack
+    image = load_image(samples[0][0])
+    strided = np.repeat(image, 2, axis=1)[:, ::2]
+    assert not strided.flags.c_contiguous
+    model = ReplayModel(pack)
+    np.testing.assert_array_equal(model.segment(strided).mask, model.segment(image).mask)
+    assert model.detect(strided) == model.detect(image)
 
 
 def test_default_config_selects_fakes():
