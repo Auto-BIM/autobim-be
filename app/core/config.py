@@ -18,11 +18,17 @@ class SegSettings(BaseModel):
     threads: int = Field(default=2, gt=0)  # ONNX Runtime intra-op threads
 
 
+class ReplaySettings(BaseModel):
+    pack_dir: str | None = None
+    variant: str = "gt"
+
+
 class ModelSettings(BaseModel):
     wall_segmenter: str = "fake"
     opening_detector: str = "fake"
     dimension_reader: str = "fake"
     seg: SegSettings = Field(default_factory=SegSettings)
+    replay: ReplaySettings = Field(default_factory=ReplaySettings)
 
 
 class StorageSettings(BaseModel):
@@ -82,6 +88,10 @@ _ENV_SEG_OVERRIDES = {
     "AUTOBIM_SEG_BUNDLE": "bundle_dir",
     "AUTOBIM_SEG_THREADS": "threads",
 }
+_ENV_REPLAY_OVERRIDES = {
+    "AUTOBIM_REPLAY_PACK": "pack_dir",
+    "AUTOBIM_REPLAY_VARIANT": "variant",
+}
 _ENV_LIMIT_OVERRIDES = {
     "AUTOBIM_MAX_UPLOAD_MB": "max_upload_mb",
     "AUTOBIM_MAX_PIXELS": "max_pixels",
@@ -103,6 +113,10 @@ def load_settings(path: str | Path | None = None) -> Settings:
     for env, field in _ENV_SEG_OVERRIDES.items():
         if value := os.environ.get(env):
             seg[field] = value  # validated (and coerced to int) with the rest of the file
+    replay = models["replay"] = models.get("replay") or {}
+    for env, field in _ENV_REPLAY_OVERRIDES.items():
+        if value := os.environ.get(env):
+            replay[field] = value
     settings = Settings.model_validate(raw)
     for env, field in _ENV_MODEL_OVERRIDES.items():
         if value := os.environ.get(env):
