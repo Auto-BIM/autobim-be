@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: deploy/deploy.sh [branch or tag, default develop]
+# Usage: deploy/deploy.sh [branch, tag or 40-char commit SHA, default develop]
 # git update -> build -> restart -> health. Reads deploy/.env.
 set -euo pipefail
 
@@ -17,12 +17,16 @@ main() {
   set +a
 
   git fetch --all --tags --prune
-  if git show-ref --verify --quiet "refs/remotes/origin/$ref"; then
+  if [[ $ref =~ ^[0-9a-f]{40}$ ]]; then
+    # CD passes the commit CI checked; never move to a newer push of the same branch.
+    git cat-file -e "$ref^{commit}" || { echo "commit $ref not found after fetch" >&2; exit 1; }
+    git checkout --detach "$ref"
+  elif git show-ref --verify --quiet "refs/remotes/origin/$ref"; then
     git checkout "$ref" && git pull --ff-only
   else
     git checkout "tags/$ref"
   fi
-  echo "deploying $(git describe --tags --always --dirty)"
+  echo "deploying $(git describe --tags --always --dirty) ($(git rev-parse HEAD))"
 
   "${compose[@]}" up -d --build --remove-orphans
 
