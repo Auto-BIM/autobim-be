@@ -1,0 +1,63 @@
+# Auto-BIM backend settings.
+# Override the file with AUTOBIM_CONFIG=/path/to/settings.yaml,
+# and individual model choices with AUTOBIM_WALL_SEGMENTER / AUTOBIM_OPENING_DETECTOR / AUTOBIM_DIMENSION_READER.
+# The seg model's bundle folder and threads: AUTOBIM_SEG_BUNDLE / AUTOBIM_SEG_THREADS.
+# Upload limits: AUTOBIM_MAX_UPLOAD_MB / AUTOBIM_MAX_PIXELS.
+
+models:
+  # fake | seg
+  wall_segmenter: fake
+  # fake | seg   (when both are `seg` they share one model instance)
+  opening_detector: fake
+  # fake | none
+  dimension_reader: fake
+  # Used when wall_segmenter / opening_detector is `seg`. Needs the `seg` extra (pip install .[seg]).
+  seg:
+    # model bundle folder (model.onnx + model.json + pkg/autobim_seg); put <bundle>/pkg on PYTHONPATH
+    bundle_dir: null
+    threads: 2
+  replay:
+    # Evaluation pack; AUTOBIM_REPLAY_PACK / AUTOBIM_REPLAY_VARIANT override these.
+    # Select replay for both recognition roles and none for dimension_reader.
+    # Any replay role with dimension_reader=fake is rejected at startup.
+    pack_dir: null
+    variant: gt  # gt | pred/<bundle name>
+
+storage:
+  # relative paths are resolved against the repo root. Override with AUTOBIM_DATA_DIR.
+  data_dir: data/jobs
+
+limits:
+  # POST /api/jobs rejects larger uploads with 413. 1 MB = 1024 * 1024 bytes.
+  max_upload_mb: 30
+  # image width * height, judged from the header only
+  max_pixels: 40000000
+
+cors:
+  # Browser origins allowed to call the API, e.g. ["http://localhost:5173"]. ["*"] = any origin
+  # (no cookies are used). [] turns CORS off. Override with AUTOBIM_CORS_ORIGINS (comma-separated).
+  allow_origins: ["*"]
+
+recognition:
+  # detections below this confidence become review items
+  review_confidence_threshold: 0.5
+  # Length factors are relative to the drawing's wall thickness (docs/recognition.md section 3).
+  # Tune on the dev evaluation pack only.
+  min_component_area_factor: 4.0  # R1: drop blobs smaller than f * t^2
+  run_len_factor: 2.5  # R3: shortest run counted as a wall, max(f * t, 15) px
+  thin_factor: 0.4  # R3: drop bands thinner than f * t
+  collinear_tol_factor: 0.5  # R5: same line when centers differ by <= f * max(t)
+  noise_gap_factor: 1.0  # R5: join gaps <= f * t even without an opening box
+  gap_cover_ratio: 0.5  # R5: an opening box must cover this share of a gap
+  snap_factor: 1.0  # R6: snap ends within t_other / 2 + f * t of a crossing wall
+  min_len_factor: 1.0  # R6c: drop walls shorter than f * t
+  duplicate_overlap_ratio: 0.25  # parallel walls sharing this much of their thickness and length are one wall
+  building_link_factor: 1.0  # R5b: wall bodies closer than f * t are one body (a door gap is not a split)
+  other_plan_ratio: 0.3  # R5b: a second body this share of the largest means several plans on the sheet
+  max_opening_dist_factor: 20.0  # R9: a box farther than f * t from every wall is dropped, not attached
+
+jobs:
+  # Recognition slots per process (run one uvicorn worker).
+  max_concurrent: 1
+  # Finished jobs and orphan folders expire after this many hours.
+  ttl_hours: 72

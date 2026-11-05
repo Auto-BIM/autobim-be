@@ -1,0 +1,98 @@
+# autobim-be
+
+Auto-BIM 백엔드. 2D 평면도(이미지 또는 DXF)를 중간 표현 **Plan**(mm)으로 바꾸고, 그로부터 웹 3D 뷰어용 `.glb`, 벽별 블록 `.dxf`, JSON을 만든다.
+
+- 설계: [docs/design.md](docs/design.md)
+- API: [docs/api.md](docs/api.md) · [docs/openapi.json](docs/openapi.json)
+- 기본값: [docs/ASSUMPTIONS.md](docs/ASSUMPTIONS.md)
+- 다음 작업: [docs/next-tasks.md](docs/next-tasks.md)
+- 프로젝트 로드맵·시스템 명세·결정 기록: [docs/project/](docs/project/README.md)
+- 인식 알고리즘: [docs/recognition.md](docs/recognition.md) · OCI 배포: [docs/deploy-oci.md](docs/deploy-oci.md)
+- 에이전트/기여 규칙: [AGENTS.md](AGENTS.md) ([CLAUDE.md](CLAUDE.md)는 AGENTS.md를 불러옴)
+
+> 현재 상태: 인식 모델은 **Fake**(고정 결과)만 동작한다. 실제 모델은 `autobim-model`이 만드는 모델 번들을 `seg` 어댑터(이슈 #5)로 붙일 예정이다. DXF 입력은 자리만 있다(P2).
+> 벽 접합부 처리가 아직 없어서 glb/dxf 모서리가 맞지 않는다(이슈 #2). 실제 마스크용 인식 v1은 #10 (BE-N1)([docs/recognition.md](docs/recognition.md)).
+
+## 로컬 실행
+
+Python 3.11이 필요하다.
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.lock
+pip install --no-deps -e .
+
+uvicorn app.main:app --reload
+# http://127.0.0.1:8000/docs
+```
+
+## Docker
+
+```bash
+docker compose up --build
+# http://localhost:8000/docs  (작업 파일은 named volume "jobs"에 저장)
+```
+
+## 실제 모델(`seg`)
+
+기본은 Fake 모델이라 번들 없이 돌아간다. 실제 모델은 모델 레포(`autobim-model`)가 만든 **모델 번들**(`model.onnx` + `model.json` + `pkg/autobim_seg/`)을 읽는다. 번들은 커밋하지 않는다. 번들을 받고 바꾸는 방법은 [docs/deploy-oci.md](docs/deploy-oci.md) §7과 모델 레포 `docs/MODEL_SPEC.md` §10, 번들 형식은 [docs/project/SYSTEM_SPEC.md](docs/project/SYSTEM_SPEC.md) §3.1~3.3을 본다.
+
+```bash
+pip install -e '.[seg]'                      # onnxruntime, opencv-python-headless
+export PYTHONPATH=<번들>/pkg                 # 번들과 짝인 autobim_seg를 import
+export AUTOBIM_SEG_BUNDLE=<번들>
+export AUTOBIM_WALL_SEGMENTER=seg AUTOBIM_OPENING_DETECTOR=seg AUTOBIM_DIMENSION_READER=none
+uvicorn app.main:app
+
+docker build --build-arg EXTRAS=seg .         # 이미지에 seg 의존성(requirements-seg.lock)을 넣는다
+pytest -m model                               # 실제 번들 테스트. AUTOBIM_SEG_BUNDLE이 없으면 건너뛴다
+```
+
+번들 폴더가 없거나 `model.json`의 `autobim_seg_version`이 `autobim_seg`와 다르면 앱이 시작하지 않는다. `/health`의 `model`에는 번들 이름(`model.json`의 `name`)이 나온다.
+
+## 사용 예
+
+```bash
+# 1) 업로드 → 작업 생성
+curl -s -F "file=@plan.png" http://127.0.0.1:8000/api/jobs
+# {"id": "<JOB>", "status": "queued", "revision": 0, ...}
+
+# 2) 상태 · Plan · 확인 필요 요소
+curl -s http://127.0.0.1:8000/api/jobs/<JOB>
+
+# 3) 보충 입력 → 재생성 (모델은 다시 돌지 않고, 기존 요소 ID는 유지됨)
+curl -s -H 'Content-Type: application/json' \
+  -d '{"scale": {"building_width_mm": 12000}, "resolved": ["o3"]}' \
+  http://127.0.0.1:8000/api/jobs/<JOB>/supplement
+
+# 4) 결과 파일
+curl -s -o model.glb http://127.0.0.1:8000/api/jobs/<JOB>/files/glb
+curl -s -o model.dxf http://127.0.0.1:8000/api/jobs/<JOB>/files/dxf
+curl -s -o plan.json http://127.0.0.1:8000/api/jobs/<JOB>/files/json
+```
+
+## 설정
+
+`config/settings.yaml`에서 모델 구현을 고른다. 환경변수로 덮어쓸 수 있다.
+
+| 환경변수 | 기본값 | 값 |
+|---|---|---|
+| `AUTOBIM_CONFIG` | `config/settings.yaml` | 설정 파일 경로 |
+| `AUTOBIM_WALL_SEGMENTER` | `fake` | `fake` · `seg` |
+| `AUTOBIM_OPENING_DETECTOR` | `fake` | `fake` · `seg` |
+| `AUTOBIM_DIMENSION_READER` | `fake` | `fake` · `none` |
+| `AUTOBIM_SEG_BUNDLE` | 없음 | `seg`가 읽을 모델 번들 폴더 |
+| `AUTOBIM_SEG_THREADS` | `2` | `seg`의 ONNX Runtime 스레드 수 |
+| `AUTOBIM_DATA_DIR` | `data/jobs` | 작업 파일 저장 위치 |
+| `AUTOBIM_CORS_ORIGINS` | `*` | 브라우저 호출을 허용할 출처. 쉼표로 구분(`http://localhost:5173,https://app.example.com`) |
+
+## 테스트
+
+```bash
+pytest -q                                  # Fake 모델로 실행
+ruff check .
+python scripts/export_openapi.py --check   # API 계약 스냅샷 확인
+```
+
+CI(GitHub Actions)는 PR마다 lint, test, OpenAPI 스냅샷, `CLAUDE.md` → `@AGENTS.md` 참조, docker build와 smoke test를 돌린다.

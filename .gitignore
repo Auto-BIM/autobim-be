@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Local job storage / runtime data
+data/
+
+# Datasets, model weights, sample drawings — never commit
+datasets/
+weights/
+checkpoints/
+samples/
+*.pth
+*.pt
+*.pkl
+*.onnx
+*.ckpt
+*.safetensors
+*.dwg
+*.dxf
+*.glb
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.pdf
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+.env
