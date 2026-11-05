@@ -75,8 +75,16 @@ docker compose up --build                  # 컨테이너 실행
 | `main` | — | — |
 | `develop` | — | — |
 | `feature/*` | `develop` | `develop` |
+| `docs/*` | `develop` | `develop` |
+| `ci/*`, `cd/*` | `develop` | `develop` |
 | `release/*` | `develop` | `main`, `develop` |
 | `hotfix/*` | `main` | `main`, `develop` |
+
+브랜치 이름은 작업 종류를 따른다. 기능은 `feature/*`, 문서는 `docs/*`, CI/CD는 `ci/*` 또는 `cd/*`.
+
+### Pull Request
+
+PR의 base는 위 표의 "어디로 머지하나"를 따른다. 레포의 기본 브랜치가 `main`이라서 base를 생략하면 PR이 `main`을 향하고, `main` 푸시는 CD로 바로 배포된다. 그래서 `gh pr create`는 `--base develop`처럼 base를 항상 명시한다.
 
 ### 커밋 메시지
 
