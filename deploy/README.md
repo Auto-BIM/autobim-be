@@ -8,7 +8,7 @@ OCI Always Free A1 VM(arm64, 2 OCPU, 12 GB) 한 대에서 Caddy(프론트 정적
 | `docker-compose.prod.yml` | `api`(워커 1개, `mem_limit`, 번들 읽기 전용 마운트, 볼륨 `jobs`) + `web`(caddy:2) |
 | `Caddyfile` | `/api/*`·`/health` → `api:8000`, 나머지는 `/srv/fe/current` |
 | `.env.example` | 호스트 경로·포트·모델 선택. `deploy/.env`로 복사해서 쓴다(커밋하지 않는다) |
-| `deploy.sh [ref]` | git 갱신 → 빌드 → 재시작 → health. 기본 `develop`, 태그도 된다 |
+| `deploy.sh [ref]` | git 갱신 → 빌드 → 재시작 → health. 기본 `develop`, 태그와 40자리 커밋 SHA도 된다 |
 | `smoke.sh <base_url> [image]` | 업로드 → 폴링 → glb·dxf·json 다운로드 → 크기 검사. 이미지를 안 주면 빈 PNG를 만든다 |
 
 ## 배포 (런북 §6, §9)
@@ -22,7 +22,7 @@ deploy/smoke.sh http://localhost
 
 처음이면 프론트 자리(`/opt/autobim/fe/current`)를 먼저 만든다(런북 §6). 밖에서 `http://<공인 IP>/health`가 200이면 끝.
 **시연 기간에는 재시작하지 않는다.** 작업 목록이 메모리에 있어 재시작하면 기존 작업 링크가 404가 된다.
-`main` 푸시는 CI 통과 뒤 CD가 `deploy.sh main`을 자동 실행한다(런북 §14). `develop`은 CI만 돈다.
+`main` 푸시는 CI 통과 뒤 CD가 CI가 검사한 커밋 SHA로 `deploy.sh`를 자동 실행한다(런북 §14). `develop`은 CI만 돈다.
 
 ## 모델 교체·롤백 (런북 §7)
 

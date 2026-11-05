@@ -405,10 +405,11 @@ open http://localhost:8080
 | 브랜치·이벤트 | 하는 일 |
 |---|---|
 | PR, `develop` 푸시 | `ci.yml`만 (`test`, `docker`, `deploy-stack`) |
-| `main` 푸시 | `cd.yml`이 `ci.yml`을 호출한다. 세 잡이 통과하면 `deploy` 잡이 VM에 SSH로 접속해 `deploy/deploy.sh main`을 실행한다. health 확인이 실패하면 잡이 실패한다 |
+| `main` 푸시 | `cd.yml`이 `ci.yml`을 호출한다. 세 잡이 통과하면 `deploy` 잡이 VM에 SSH로 접속해 CI가 검사한 커밋(`github.sha`)을 `deploy/deploy.sh <SHA>`로 배포한다. health 확인이 실패하면 잡이 실패한다 |
 
 - `main` 푸시마다 `api`가 재시작된다. §9의 재시작 주의가 그대로 적용된다.
-- `main`에 같은 푸시가 연달아 오면 앞 실행이 끝난 뒤에 다음이 시작한다(진행 중인 배포를 취소하지 않는다).
+- 배포는 푸시 SHA에 고정한다. 실행 시점의 최신 `main`을 받지 않으므로, CI가 도는 사이에 새 푸시가 와도 검사하지 않은 커밋이 배포되지 않는다. `deploy.sh`가 그 커밋을 detached HEAD로 체크아웃하고 `deploying <describe> (<전체 SHA>)`를 찍는다. 워크플로는 이 줄의 SHA가 푸시 SHA와 다르면 실패한다.
+- `main`에 푸시가 연달아 오면 진행 중인 배포는 취소하지 않는다. 대기는 하나만 남는다(`queue: single`, 기본값). 대기 중에 다음 푸시가 오면 대기 중이던 실행이 취소되고 새 푸시로 바뀐다. 각 실행은 자기 SHA만 배포하므로 건너뛴 푸시는 배포되지 않고 가장 나중 푸시가 배포된다. 가장 나중 푸시가 CI에서 실패하면 건너뛴 푸시도 배포되지 않아 VM은 이전 커밋에 남는다.
 - 시크릿은 레포 설정의 Environment `production`에 둔다.
 
 | 시크릿 | 내용 |
@@ -419,9 +420,15 @@ open http://localhost:8080
 | `OCI_KNOWN_HOSTS` | VM의 호스트 키 한 줄 (`ssh-keyscan` 형식) |
 
 ```bash
-# 배포 전용 키 만들기 (노트북, 레포 밖에). 공개 키(.pub)를 VM의 ~/.ssh/authorized_keys에 한 줄 추가하고,
+# 배포 전용 키 만들기 (노트북, 레포 밖에). 공개 키(.pub)는 아래 제한 명령을 붙여 VM의 ~/.ssh/authorized_keys에 넣고,
 # 개인 키 파일 내용은 `gh secret set OCI_SSH_KEY --env production < 파일`로만 넣는다
 ssh-keygen -t ed25519 -N '' -C autobim-be-cd -f ~/.ssh/autobim-cd-key
 # VM 호스트 키 (VM에서 직접 읽는다)
 cat /etc/ssh/ssh_host_ed25519_key.pub     # 앞에 "<IP> "를 붙인 한 줄이 OCI_KNOWN_HOSTS
+```
+
+이 키는 40자리 SHA 하나만 받아 그 커밋을 배포하고, 다른 명령은 실행하지 못한다. `authorized_keys`에는 공개 키 앞에 제한 명령을 붙여 한 줄로 넣는다.
+
+```
+restrict,command="sha=$SSH_ORIGINAL_COMMAND; case $sha in ''|*[!0123456789abcdef]*) exit 1;; esac; [ ${#sha} -eq 40 ] || exit 1; cd /opt/autobim/src/autobim-be && exec deploy/deploy.sh $sha" ssh-ed25519 <공개 키> autobim-be-cd
 ```

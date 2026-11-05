@@ -6,7 +6,9 @@ on:
 
 concurrency:
   group: cd-main
-  # A newer push waits instead of cancelling a deploy that is already running.
+  # A newer push waits instead of cancelling a deploy that is already running. Only one run
+  # waits (queue: single): a push that arrives meanwhile replaces it. Each run deploys its own
+  # SHA, so the newest push is the one that ends up on the VM.
   cancel-in-progress: false
 
 jobs:
@@ -24,6 +26,7 @@ jobs:
       OCI_SSH_KEY: ${{ secrets.OCI_SSH_KEY }}
       OCI_KNOWN_HOSTS: ${{ secrets.OCI_KNOWN_HOSTS }}
       OCI_TARGET: ${{ secrets.OCI_USER }}@${{ secrets.OCI_HOST }}
+      DEPLOY_SHA: ${{ github.sha }}
     steps:
       - name: Prepare SSH
         run: |
@@ -31,7 +34,11 @@ jobs:
           printf '%s\n' "$OCI_SSH_KEY" > ~/.ssh/id_deploy
           printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
-      - name: Deploy main
+      - name: Deploy the commit CI checked
         run: |
+          set -o pipefail
+          # The key's forced command on the VM reads this SHA from SSH_ORIGINAL_COMMAND (runbook §14).
           ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            "$OCI_TARGET" 'cd /opt/autobim/src/autobim-be && deploy/deploy.sh main'
+            "$OCI_TARGET" "$DEPLOY_SHA" | tee deploy.log
+          # A VM still on the old forced command ignores the SHA and deploys the tip of main.
+          grep -q "^deploying .* ($DEPLOY_SHA)$" deploy.log
