@@ -266,7 +266,7 @@ A1 환산: A1 코어(Neoverse N1, 3.0 GHz)는 FP32 SIMD가 128비트 2개라 이
 
 ## 8. 계약 변경
 
-계약(`app/schemas/`, `app/models/base.py`, API 경로·형식, `docs/openapi.json`)은 계약 PR에서만 바꾼다(AGENTS.md 규칙 2). 지금 필요한 계약 변경은 **#12 (BE-N3) 하나**로 묶는다.
+계약(`app/schemas/`, `app/models/base.py`, API 경로·형식, `docs/openapi.json`)은 계약 PR에서만 바꾼다(AGENTS.md 규칙 2). 아래 표는 #12 (BE-N3)에서 머지된 계약 변경이다. `.ifc` 다운로드 API는 #38에서 별도 계약 PR로 올린다.
 
 | # | 변경 | 이유 |
 |---|---|---|
