@@ -28,6 +28,7 @@ class FileKind(str, Enum):
     dxf = "dxf"
     glb = "glb"
     json = "json"
+    ifc = "ifc"
 
 
 class JobInput(_Model):

@@ -53,7 +53,7 @@ def test_create_and_get_job(client, png_bytes):
     job = Job.model_validate(client.get(f"/api/jobs/{created['id']}").json())
     assert job.status == JobStatus.succeeded and job.result_revision == 0
     assert job.plan is not None and len(job.plan.walls) == 5
-    assert set(job.files) == {"dxf", "glb", "json"}
+    assert set(job.files) == {"dxf", "glb", "json", "ifc"}
     assert job.files["glb"] == f"/api/jobs/{job.id}/files/glb"
 
 

@@ -62,7 +62,8 @@
         "enum": [
           "dxf",
           "glb",
-          "json"
+          "json",
+          "ifc"
         ],
         "title": "FileKind",
         "type": "string"
@@ -1062,9 +1063,9 @@
     }
   },
   "info": {
-    "description": "2D floor plan (image/DXF) -> Plan -> 3D (.glb) / per-wall .dxf / JSON",
+    "description": "2D floor plan (image/DXF) -> Plan -> 3D (.glb) / per-wall .dxf / IFC / JSON",
     "title": "Auto-BIM API",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -1207,6 +1208,7 @@
           "200": {
             "content": {
               "application/json": {},
+              "application/x-step": {},
               "image/vnd.dxf": {},
               "model/gltf-binary": {}
             },
@@ -1220,7 +1222,7 @@
                 }
               }
             },
-            "description": "Job not found"
+            "description": "Job or output file not found"
           },
           "409": {
             "content": {
@@ -1243,7 +1245,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Download an output file (dxf | glb | json)",
+        "summary": "Download an output file (dxf | glb | json | ifc)",
         "tags": [
           "jobs"
         ]

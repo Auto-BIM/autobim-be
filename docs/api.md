@@ -1,5 +1,7 @@
 # API 요약
 
+API_VERSION: **0.3.0**. Plan 스키마는 1.0으로 유지한다. IFC는 출력 형식이며 업로드 입력 형식은 바꾸지 않는다.
+
 전체 스펙: [openapi.json](openapi.json) — `scripts/export_openapi.py`로 생성하며,
 `tests/test_contract.py`가 실제 앱과 일치하는지 검사한다. **경로·요청/응답 형식은 계약이며
 계약 담당 PR에서만 바꾼다.** 서버 실행 중에는 `/docs`(Swagger UI)에서도 볼 수 있다.
@@ -11,7 +13,7 @@
 | POST | `/api/jobs` | 202 `Job` | 413, 415, 422 | 평면도 업로드(`multipart/form-data`, 필드 `file`) → 작업 생성 |
 | GET | `/api/jobs/{job_id}` | 200 `Job` | 404 | 상태, Plan, 파일 URL 조회 |
 | POST | `/api/jobs/{job_id}/supplement` | 202 `Job` | 400, 404, 409, 422 | 보충 입력 → 재생성, `revision` +1 |
-| GET | `/api/jobs/{job_id}/files/{kind}` | 200 파일 | 404, 409, 422 | `kind` = `dxf` \| `glb` \| `json` |
+| GET | `/api/jobs/{job_id}/files/{kind}` | 200 파일 | 404, 409, 422 | `kind` = `dxf` \| `glb` \| `json` \| `ifc` |
 | GET | `/health` | 200 `HealthResponse` | | 상태와 설정된 모델. [아래](#health) 참고 |
 
 입력 파일 종류는 확장자로 판별한다. `.dxf`이면 DXF 경로이고, png/jpg/jpeg/bmp/tif/tiff/webp(또는 `image/*`)이면 이미지 경로다.
@@ -59,6 +61,7 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
 | code | HTTP | 의미 |
 |---|---|---|
 | `job_not_found` | 404 | 작업 ID 없음 |
+| `file_not_found` | 404 | 기록된 출력 파일이 저장소에 없음 |
 | `job_busy` | 409 | 처리 중인 작업에 보충 입력 |
 | `no_plan` | 409 | 한 번도 성공하지 못한(Plan 없는) 작업에 보충 입력 |
 | `not_ready` | 409 | 성공한 리비전이 없어 결과 파일 없음 |
@@ -103,7 +106,8 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
   "files": {
     "json": "/api/jobs/3f2c…/files/json",
     "glb": "/api/jobs/3f2c…/files/glb",
-    "dxf": "/api/jobs/3f2c…/files/dxf"
+    "dxf": "/api/jobs/3f2c…/files/dxf",
+    "ifc": "/api/jobs/3f2c…/files/ifc"
   },
   "removed": [
     { "id": "w4", "element_kind": "wall", "revision": 2, "cascade_from": null },
@@ -129,7 +133,7 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
 | `input` | `JobInput` | 항상 | 업로드한 파일 정보 |
 | `plan` | `Plan` | null 가능 | `result_revision`의 Plan. 아래 [Plan](#plan-schema_version-10) 참고 |
 | `error` | `JobError` | null 가능 | 최신 리비전이 실패한 이유. 성공하거나 다시 대기하면 `null` |
-| `files` | object | 항상(빈 객체 가능) | 키 `json` · `glb` · `dxf` → 다운로드 경로. `result_revision`이 없으면 `{}` |
+| `files` | object | 항상(빈 객체 가능) | 키 `json` · `glb` · `dxf` · `ifc` → 다운로드 경로. `result_revision`이 없으면 `{}` |
 | `removed` | `RemovedElement[]` | 항상(빈 배열 가능) | 지금까지 지워진 요소 |
 
 **JobInput**
@@ -265,7 +269,7 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
 }
 ```
 
-- **모델을 다시 돌리지 않는다.** 저장된 기준 Plan(첫 인식 결과)에 보충 입력을 적용한 뒤 glb/dxf/json만 다시 만든다.
+- **모델을 다시 돌리지 않는다.** 저장된 기준 Plan(첫 인식 결과)에 보충 입력을 적용한 뒤 glb/dxf/json/ifc를 다시 만든다.
 - 보충 입력은 **누적**된다. 다시 만들 때마다 기준 Plan에서 시작해 ① 가장 최근 `scale`로 축척을 바꾸고 ② 지금까지 받은 보충 입력을 순서대로 적용한다. 각 보충 입력 안의 적용 순서는 `walls` → `openings` → `remove` → `add_walls` → `add_openings` → `resolved`.
 - `scale`에는 다음 중 **정확히 하나**만 넣는다.
   - `mm_per_px`
@@ -357,3 +361,15 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
 | `json` | Plan |
 | `glb` | 벽마다 노드 하나(이름 = 벽 ID). m 단위, Y-up. Plan (x, y) → glTF (x, −z) |
 | `dxf` | mm(`$INSUNITS=4`). 벽마다 블록 `WALL_<id>`(polyface 메시)와 INSERT 하나, 레이어 `A-WALL`. 개구부는 블록 `DOOR_<id>` / `WINDOW_<id>`(평면 윤곽)이며 레이어는 `A-DOOR` / `A-WINDOW` |
+
+
+### IFC 출력 (0.3.0)
+
+`GET /api/jobs/{job_id}/files/ifc`는 `application/x-step` 형식의 IFC4 파일을
+반환한다. 다운로드 이름은 `<job_id>.ifc`, 작업 저장 파일명은 `model.ifc`다.
+벽마다 `WALL_<id>` IfcWall을 기록하고 실제 절단 구간이 있는 개구부는
+IfcOpeningElement와 DOOR/WINDOW 객체로 연결한다. mm 단위이며 팀 3D 메시를 사용한다.
+유효 절단 구간이 없거나 벽 높이와 겹치지 않는 문·창은 입체 객체를 만들지 않는다.
+보충 입력 뒤에는 다른 출력과 같은 revision으로 재생성하며 제거된 객체는 IFC에서도 사라진다.
+404는 알 수 없는 작업 또는 저장소에 없는 출력 파일, 409는 아직 성공한 출력 없음, 422는 유효하지 않은 kind다.
+IFC 파일 생성이 성공했다는 사실은 SketchUp의 객체별 편집 성공을 뜻하지 않는다.
