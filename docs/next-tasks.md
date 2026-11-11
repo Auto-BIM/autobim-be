@@ -16,7 +16,7 @@
 | #13 (BE-N4) | 서빙 안정화: 추론 동시 1개, EXIF 회전, 작업 TTL, 단계별 시간 로그 | P0 | 조예준 | W11 | — |
 | #7 | OCI 배포 (Caddy + compose + 스크립트) | P0 | 조항민 | W9~W11 | — |
 | #6 | Plan 단위 시스템 평가 | P1 | 임준형 | W12~W14 | #11 (BE-N2) |
-| #14 (BE-N5) | SketchUp 호환 확인 | P1 | 조예준 | W12 | #2 |
+| #14 (BE-N5) | SketchUp 호환 확인 + IFC 출력 | P1 | 조예준 | W12 | #2 |
 | #15 (BE-N6) | 대체 데모 페이지 (조건부: M1에서 프론트 3D가 안 뜰 때만) | P1 | 조항민 | W11 | — |
 | #3 | DXF 입력 경로 | P2 | 조예준 | G3 결정 | — |
 | #4 | 작업 영속화 · 큐 분리 | P2 | — | G3 결정 | — |
@@ -232,22 +232,18 @@ GitHub: [#6](https://github.com/Auto-BIM/autobim-be/issues/6)
 
 ---
 
-## #14 (BE-N5) SketchUp 호환 확인 (P1)
+## #14 (BE-N5) SketchUp 호환 확인 + IFC 출력 (P1)
 
 GitHub: [#14](https://github.com/Auto-BIM/autobim-be/issues/14)
 
-**배경**: `.dxf`는 벽마다 블록(polyface 메시) + INSERT, 레이어 `A-WALL`·`A-DOOR`·`A-WINDOW`, mm 단위다. 시연에서 SketchUp으로 열어 보여 주려면 실제 버전에서 확인해야 한다(SketchUp 버전은 미결 O-08).
+IFC 내보내기·합성 테스트·SketchUp 검증과 문서를 담당한다.
+다운로드 API는 별도 [#38](https://github.com/Auto-BIM/autobim-be/issues/38) 계약 PR이다.
+실제 적용 버전과 제공 한계는 [SketchUp 사용법](sketchup.md)을 따른다.
 
-**건드리는 폴더**: `app/export/dxf.py`(필요 시), `tests/test_export_dxf.py`(신규), `docs/sketchup.md`(신규)
-
-**할 일**
-- Fake 도면 + 실제 도면 2장의 `.dxf`를 SketchUp에서 가져오기(단위 mm). 확인: 벽마다 컴포넌트, 태그(레이어) 3개, 면이 생김, 개구부 구멍, 크기.
-- polyface가 면으로 안 들어오면 `3DFACE`로 내보내는 옵션(`ezdxf` `MeshBuilder.render_3dfaces`)을 설정으로 추가한다.
-- 결과와 스크린샷 위치를 `docs/sketchup.md`에 적는다(이미지 파일은 커밋하지 않음).
-
-**완료 조건**
-- [ ] 팀이 정한 SketchUp 버전에서 위 항목이 확인됐다.
-- [ ] 내보내기 방식을 바꿨다면 블록 수 = 벽 수, `$INSUNITS = 4` 테스트.
+- 팀 Plan·3D 메시를 유지하며 벽별 IFC 객체와 문·창·개구부를 출력한다.
+- DXF의 mm 단위·벽 블록·세 태그를 검사한다. 빈 블록 정책은 #23이다.
+- SketchUp 객체 선택·편집·저장·재열기·재출력 근거와 미확인을 기록한다.
+- ifcopenshell 의존성과 Linux Python 3.11 락을 추가하고 팀 CI에서 재확인한다.
 
 ---
 
