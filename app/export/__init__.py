@@ -6,12 +6,13 @@ from pathlib import Path
 
 from app.export.dxf import write_dxf
 from app.export.glb import write_glb
+from app.export.ifc import write_ifc
 from app.geometry.junctions import wall_junctions
 from app.geometry.walls import build_wall_meshes
 from app.schemas.jobs import FileKind
 from app.schemas.plan import Plan
 
-FILE_NAMES = {FileKind.json: "plan.json", FileKind.glb: "model.glb", FileKind.dxf: "model.dxf"}
+FILE_NAMES = {FileKind.json: "plan.json", FileKind.glb: "model.glb", FileKind.dxf: "model.dxf", FileKind.ifc: "model.ifc"}
 
 
 def write_outputs(plan: Plan, out_dir: Path) -> dict[FileKind, Path]:
@@ -22,4 +23,5 @@ def write_outputs(plan: Plan, out_dir: Path) -> dict[FileKind, Path]:
     meshes = build_wall_meshes(plan, junctions)
     write_glb(meshes, paths[FileKind.glb])
     write_dxf(plan, meshes, paths[FileKind.dxf], junctions)
+    write_ifc(plan, meshes, paths[FileKind.ifc], junctions)
     return paths

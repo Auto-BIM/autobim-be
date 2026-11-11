@@ -25,6 +25,7 @@ MEDIA_TYPES = {
     FileKind.json: "application/json",
     FileKind.glb: "model/gltf-binary",
     FileKind.dxf: "image/vnd.dxf",
+    FileKind.ifc: "application/x-step",
 }
 
 _404 = {404: {"model": ErrorResponse, "description": "Job not found"}}
@@ -156,14 +157,14 @@ def supplement_job(
     "/{job_id}/files/{kind}",
     response_class=FileResponse,
     responses={
-        **_404,
+        404: {"model": ErrorResponse, "description": "Job or output file not found"},
         **_409,
         200: {
             "description": "The requested output file",
             "content": {media: {} for media in MEDIA_TYPES.values()},
         },
     },
-    summary="Download an output file (dxf | glb | json)",
+    summary="Download an output file (dxf | glb | json | ifc)",
 )
 def get_job_file(request: Request, job_id: str, kind: FileKind) -> FileResponse:
     store = _store(request)
@@ -174,6 +175,8 @@ def get_job_file(request: Request, job_id: str, kind: FileKind) -> FileResponse:
         path = record.outputs.get(kind)  # last successful revision, even while regenerating
         if path is None:
             raise _error(409, "not_ready", f"job is {record.job.status.value}; no files yet")
+        if not path.is_file():
+            raise _error(404, "file_not_found", f"output {kind.value!r} is missing")
         return JobFileResponse(
             path, store=store, job_id=job_id,
             media_type=MEDIA_TYPES[kind], filename=f"{job_id}.{kind.value}",
