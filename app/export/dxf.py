@@ -8,7 +8,7 @@ import ezdxf
 import trimesh
 from ezdxf.render import MeshBuilder
 
-from app.geometry.junctions import unit, wall_junctions
+from app.geometry.junctions import unit, wall_crossings, wall_junctions
 from app.geometry.walls import opening_spans
 from app.schemas.plan import OpeningType, Plan
 
@@ -47,6 +47,7 @@ def write_dxf(plan: Plan, meshes: dict[str, trimesh.Trimesh], path: Path, juncti
     # Same clamping as the 3D cut: inside the wall's solid, outside junction footprints, so a
     # footprint can be split in two or empty (the block is kept so IDs stay stable).
     exts, zones = junctions or wall_junctions(plan.walls)
+    gaps, rests = wall_crossings(plan.walls)
     for o in plan.openings:
         wall = plan.wall(o.wall_id)
         ux, uy = unit(wall)
@@ -55,7 +56,9 @@ def write_dxf(plan: Plan, meshes: dict[str, trimesh.Trimesh], path: Path, juncti
         layer = _OPENING_LAYER[o.type]
         name = opening_block_name(o.id, o.type)
         block = doc.blocks.new(name)
-        for s0, s1 in opening_spans(wall, o, exts[wall.id], zones[wall.id]):
+        for s0, s1 in opening_spans(
+            wall, o, exts[wall.id], zones[wall.id] + rests.get(wall.id, []), gaps.get(wall.id)
+        ):
             corners = [
                 (wall.start.x + ux * s + nx * sb * ht, wall.start.y + uy * s + ny * sb * ht)
                 for s, sb in ((s0, -1), (s1, -1), (s1, 1), (s0, 1))

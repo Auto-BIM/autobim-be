@@ -24,6 +24,9 @@ Deterministic: walls are ordered by thickness (thick first), then ID length, the
   around it, so 3D and DXF show it split while plan.json keeps its width (a 900 mm door over a T
   junction: 390 + 390 mm). At oblique joints that is only part of
   the wedge gap; a wall touching only another wall's end keeps a stretch of that end.
+- Walls crossing in the middle of both (a `+` of through walls, no end inside the other's strip): `wall_crossings`. The lower-priority wall (thinner, then later ID) is emptied
+  over the higher one's strip so the crossing is filled once. Perpendicular: no gap, no
+  overlap. Oblique: no overlap, a wedge gap (no mitre). IDs and Plan values are unchanged.
 """
 
 from __future__ import annotations
@@ -47,12 +50,12 @@ def unit(w: Wall) -> tuple[float, float]:
     return (w.end.x - w.start.x) / w.length, (w.end.y - w.start.y) / w.length
 
 
-def _touches(p: tuple[float, float], w: Wall) -> bool:
+def _touches(p: tuple[float, float], w: Wall, tol: float | None = None) -> bool:
     """p lies within TOL (straight-line distance, like the endpoint clustering) of w's centerline."""
     ux, uy = unit(w)
     dx, dy = p[0] - w.start.x, p[1] - w.start.y
     s = min(max(dx * ux + dy * uy, 0.0), w.length)
-    return math.hypot(dx - ux * s, dy - uy * s) <= TOL
+    return math.hypot(dx - ux * s, dy - uy * s) <= (TOL if tol is None else tol)
 
 
 def _angle(d: tuple[float, float], master_dir: tuple[float, float]) -> tuple[float, float]:
@@ -206,3 +209,42 @@ def wall_junctions(
                     z0, z1 = hi - (z1 - z0), hi
                 zones[b.id].append((z0, z1))
     return out, zones
+
+
+def wall_crossings(
+    walls: list[Wall],
+) -> tuple[dict[str, list[tuple[float, float]]], dict[str, list[tuple[float, float]]]]:
+    """(cuts, zones). Cuts: wall ID -> wall-local s intervals to leave empty. Two walls whose
+    centerlines meet in the interior of both empty the lower-priority wall over the higher one's
+    strip: |s - s*| <= (t_hi/2 + t_lo/2 |cos|) / |sin|. Pairs with an end within
+    max(TOL, thickness / 2) of the other's centerline are skipped: touching ends are
+    `wall_junctions`' job, ends buried in the strip are issue #22. Zones: the matching interval
+    on the higher wall, where its openings must not cut (the other wall rests there). A wall a
+    single crossing would empty entirely is left alone."""
+    ordered = sorted(walls, key=_key)
+    found = []  # (higher wall, lower wall, interval on higher, interval on lower)
+    for k, a in enumerate(ordered):
+        for b in ordered[k + 1:]:
+            (ax, ay), (bx, by) = unit(a), unit(b)
+            sin = ax * by - ay * bx
+            if abs(sin) < _PARALLEL or any(
+                _touches(p, o, max(TOL, o.thickness / 2)) for p, o in [((a.start.x, a.start.y), b), ((a.end.x, a.end.y), b),
+                                            ((b.start.x, b.start.y), a), ((b.end.x, b.end.y), a)]
+            ):
+                continue
+            dx, dy = b.start.x - a.start.x, b.start.y - a.start.y
+            sa, sb = (dx * by - dy * bx) / sin, (dx * ay - dy * ax) / sin  # crossing on a, on b
+            if 0 < sa < a.length and 0 < sb < b.length:
+                cos = abs(ax * bx + ay * by)
+                ha = (b.thickness / 2 + a.thickness / 2 * cos) / abs(sin)
+                hb = (a.thickness / 2 + b.thickness / 2 * cos) / abs(sin)
+                found.append((a, b, (sa - ha, sa + ha), (sb - hb, sb + hb)))
+    # ponytail: only a single crossing covering a whole wall is checked, not several together
+    emptied = {b.id for _, b, _, (lo, hi) in found if lo <= 0 and hi >= b.length}
+    cuts: dict[str, list[tuple[float, float]]] = {}
+    zones: dict[str, list[tuple[float, float]]] = {}
+    for a, b, za, cb in found:
+        if b.id not in emptied:
+            cuts.setdefault(b.id, []).append(cb)
+            zones.setdefault(a.id, []).append(za)
+    return cuts, zones
