@@ -110,14 +110,19 @@ def skeleton_length(mask: np.ndarray) -> float:
 
     Independent of wall thickness, unlike area / t_med. Pixels where two walls meet (both runs
     long) are weighted as a band pixel, so an L corner counts to the corner centre like the
-    Plan centreline does. ponytail: T/+ junctions stay ~0.5t/1t short and slanted walls are
-    overcounted; swap in real thinning if that matters.
+    Plan centreline does. A thickness only counts if enough pixels share it to form a band
+    four times longer than thick (a junction square has only ~t^2 of them), so walls of
+    different thickness do not get mistaken for junctions. ponytail: T/+ junctions stay
+    ~0.5t/1t short and slanted walls are overcounted; swap in real thinning if that matters.
     """
     across = np.minimum(_run_lengths(mask), _run_lengths(mask.T).T)[mask]
     if not across.size:
         return 0.0
-    t = float(np.median(across))
-    return float((1.0 / np.where(across > 1.5 * t, t, across)).sum())
+    vals, counts = np.unique(across, return_counts=True)
+    bands = vals[counts >= 4 * vals.astype(float) ** 2]
+    cap = 1.5 * bands.max() if bands.size else float(np.median(across))
+    t = float(np.median(across[across <= cap]))
+    return float((1.0 / np.where(across > cap, t, across)).sum())
 
 
 def plan_length_px(plan: Plan) -> float:

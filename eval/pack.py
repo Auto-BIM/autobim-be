@@ -30,13 +30,12 @@ def open_variant(pack: Path, variant: str) -> ReplayModel:
         raise PackError(f"평가 팩을 열 수 없음 ({variant}): {exc}") from exc
 
 
-def load_samples(pack: Path) -> list[Sample]:
-    """Images in manifest order; each must hash to the manifest's sha1 like replay expects."""
+def iter_samples(pack: Path):
+    """Images in manifest order, one at a time; each must hash to the manifest's sha1 like replay expects."""
     try:
         manifest = json.loads((pack / "manifest.json").read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise PackError(f"manifest.json을 읽을 수 없음: {pack}: {exc}") from exc
-    samples = []
     for entry in manifest:
         try:
             sid, rel, sha1 = entry["id"], entry["image"], entry["sha1"]
@@ -47,5 +46,4 @@ def load_samples(pack: Path) -> list[Sample]:
             raise PackError(
                 f"이미지 {sid}의 sha1이 manifest와 다름(디코딩 결과가 팩 제작 쪽과 다름): {rel}"
             )
-        samples.append(Sample(str(sid), image))
-    return samples
+        yield Sample(str(sid), image)

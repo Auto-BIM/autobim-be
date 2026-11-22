@@ -11,11 +11,11 @@ import pytest
 import uvicorn
 from PIL import Image
 
-import app
 from app.core.config import Settings, StorageSettings
 from app.main import create_app
 from app.models.base import BBox, OpeningDetection
-from app.models.registry import build_models
+from app.models.fake import FakeWallSegmenter
+from app.models.registry import Models, build_models
 from app.schemas.plan import (
     Opening,
     OpeningType,
@@ -78,19 +78,15 @@ def make_pack(root, variants, n=2):
 GT = (_frame([DOOR_GAP, WINDOW_GAP]), [DOOR_BOX, WINDOW_BOX])
 
 
-def test_uses_this_checkout():
-    assert "autobim-be" in str(app.__file__)  # a stale editable install would point elsewhere
-
-
 def test_identical_pack_scores_perfect(tmp_path):
     pack = make_pack(tmp_path / "pack", {"gt": GT, "pred/seg-v1": GT})
     rows, summary = run.evaluate(pack, ["gt", "pred/seg-v1"])
     for v in ("gt", "pred/seg-v1"):
         s = summary["variants"][v]
         assert s["success_rate"] == 1.0
-        assert s["wall_iou_mean"] >= 0.98
+        assert s["wall_iou_mean"] == pytest.approx(1.0)
         assert s["openings"]["all"]["f1"] == 1.0
-        assert s["length_error_mean"] < 0.03
+        assert s["length_error_mean"] == pytest.approx(0.0, abs=1e-9)
     assert summary["common_succeeded"]["images"] == 2
 
 
@@ -105,8 +101,8 @@ def test_removed_and_moved_opening_end_to_end(tmp_path):
     assert (o["window"]["tp"], o["window"]["fp"], o["window"]["fn"]) == (2, 0, 0)
     assert o["all"]["precision"] == 1.0 and o["all"]["recall"] == 0.5
     s = summary["variants"]["pred/seg-v1"]
-    assert s["position_error_px_median"] == pytest.approx(6, abs=1)
-    assert s["width_error_px_median"] == pytest.approx(0, abs=1)
+    assert s["position_error_px_median"] == pytest.approx(6)
+    assert s["width_error_px_median"] == pytest.approx(0)
 
 
 def _plan(openings, scale=2.0):
@@ -224,8 +220,12 @@ def live_server(tmp_path):
     server = uvicorn.Server(uvicorn.Config(create_app(settings), port=port, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()
-    while not server.started:
+    for _ in range(200):
+        if server.started:
+            break
         time.sleep(0.05)
+    else:
+        pytest.fail("test server did not start")
     yield f"http://127.0.0.1:{port}"
     server.should_exit = True
     thread.join(5)
@@ -240,11 +240,15 @@ def test_measure_latency_against_server(live_server, tmp_path):
     log.write_text("", encoding="utf-8")
     code = measure_latency.main(
         ["--url", live_server, "--images", str(images), "-n", "3", "-o", str(out),
-         "--concurrency-check", "--server-log", str(log)]
+         "--server-log", str(log)]
     )
     assert code == 0
     lines = out.read_text(encoding="utf-8-sig").splitlines()
     assert len(lines) == 1 + 3 and all(",succeeded," in line for line in lines[1:])
+    row = measure_latency.run_job(live_server, images / "a.png", timeout=30)
+    assert row["status"] == "succeeded" and row["server_s"] >= 0 and row["client_s"] > 0
+    pair = measure_latency.concurrency_check(live_server, [images / "a.png"], timeout=30)
+    assert [r["status"] for r in pair] == ["succeeded", "succeeded"]
 
 
 def test_measure_latency_without_images_is_a_friendly_error(tmp_path, capsys):
@@ -268,7 +272,27 @@ def test_parse_server_log_and_percentiles():
 
 
 def test_stage_wrapper_splits_predict_from_recognition():
-    models = build_models(Settings().models)
-    image = np.zeros((60, 80, 3), np.uint8)
-    predict, recognition = stages.time_image(models, image)
-    assert predict > 0 and recognition > 0
+    class SlowSegmenter(FakeWallSegmenter):
+        def segment(self, image):
+            time.sleep(0.5)
+            return super().segment(image)
+
+    fakes = build_models(Settings().models)
+    models = Models(SlowSegmenter(), fakes.opening_detector, fakes.dimension_reader)
+    predict, recognition = stages.time_image(models, np.zeros((60, 80, 3), np.uint8))
+    assert predict == pytest.approx(0.5, abs=0.1)
+    assert recognition < 0.4  # the sleep is not counted twice
+
+
+def test_skeleton_mixed_thickness():
+    m = np.zeros((200, 300), bool)
+    for y in (20, 60, 100):
+        m[y:y + 4, 10:290] = True  # three 4 px walls, 280 long
+    m[150:160, 10:110] = True  # one 10 px wall, 100 long: thicker than 1.5 x the median
+    assert metrics.skeleton_length(m) == pytest.approx(940, abs=2)
+
+
+def test_repeated_variant_is_counted_once(tmp_path):
+    pack = make_pack(tmp_path / "pack", {"gt": GT})
+    _, summary = run.evaluate(pack, ["gt", "gt"])
+    assert summary["variants"]["gt"]["images"] == 2

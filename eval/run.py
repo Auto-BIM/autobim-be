@@ -15,13 +15,14 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+from app.core.config import RecognitionSettings, load_settings
 from app.models.fake import NullDimensionReader
 from app.models.registry import Models
 from app.recognition.pipeline import RecognitionError, image_to_plan
 from app.recognition.walls import estimate_thickness
 from app.schemas.plan import ReviewReason
 from eval import metrics
-from eval.pack import PackError, load_samples, open_variant
+from eval.pack import PackError, iter_samples, open_variant
 
 TYPES = ("door", "window")
 CSV_FIELDS = [
@@ -44,13 +45,13 @@ def _pack_call(fn, *args):
         raise PackError(f"평가 팩 파일 오류: {exc}") from exc
 
 
-def _row(variant, sample, model, gt_mask, gt_boxes) -> dict:
+def _row(variant, sample, model, gt_mask, gt_boxes, rec: RecognitionSettings) -> dict:
     row = {"variant": variant, "id": sample.id, "_pos": [], "_wid": [], "_types": {}}
     _pack_call(model.segment, sample.image)  # a broken pack file is a pack error, not a failed image
     row["detections"] = len(_pack_call(model.detect, sample.image))
     models = Models(model, model, NullDimensionReader())
     try:
-        plan = image_to_plan(sample.image, models, filename=sample.id)
+        plan = image_to_plan(sample.image, models, filename=sample.id, settings=rec)
     except RecognitionError as exc:
         return {**row, "status": "failed", "error_code": exc.code}
     except Exception as exc:  # noqa: BLE001 — same split as app/jobs/runner.py
@@ -102,19 +103,22 @@ def _aggregate(rows: list[dict]) -> dict:
     }
 
 
-def evaluate(pack: Path, variants: list[str]) -> tuple[list[dict], dict]:
+def evaluate(
+    pack: Path, variants: list[str], rec: RecognitionSettings | None = None
+) -> tuple[list[dict], dict]:
+    rec = rec or RecognitionSettings()
+    variants = list(dict.fromkeys(variants))  # a repeated variant would be counted twice
     gt_model = open_variant(pack, "gt")  # ground truth always comes from the gt variant
-    samples = load_samples(pack)
     models = {v: gt_model if v == "gt" else open_variant(pack, v) for v in variants}
-    truth = {
-        s.id: (_pack_call(gt_model.segment, s.image).mask, _pack_call(gt_model.detect, s.image))
-        for s in samples
-    }
-    rows = [_row(v, s, models[v], *truth[s.id]) for v in variants for s in samples]
+    rows, images = [], 0
+    for s in iter_samples(pack):  # one image in memory at a time (17 MP images add up)
+        images += 1
+        truth = (_pack_call(gt_model.segment, s.image).mask, _pack_call(gt_model.detect, s.image))
+        rows += [_row(v, s, models[v], *truth, rec) for v in variants]
     by_variant = {v: [r for r in rows if r["variant"] == v] for v in variants}
     summary = {
         "pack": str(pack),
-        "images": len(samples),
+        "images": images,
         "units": "px",
         "notes": [
             "ignore(255) regions are not excluded: the pack stores them as background",
@@ -150,10 +154,13 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m eval.run", description="Plan 단위 시스템 평가")
     ap.add_argument("--pack", required=True, type=Path, help="평가 팩 폴더")
     ap.add_argument("--variant", action="append", help="gt 또는 pred/<번들> (반복 지정, 기본 gt)")
+    ap.add_argument("--config", type=Path, help="settings.yaml의 recognition 설정을 쓴다(기본: 서버와 같은 기본 경로)")
     ap.add_argument("-o", "--out", required=True, type=Path, help="결과 폴더")
     args = ap.parse_args(argv)
     try:
-        rows, summary = evaluate(args.pack, args.variant or ["gt"])
+        rows, summary = evaluate(
+            args.pack, args.variant or ["gt"], load_settings(args.config).recognition
+        )
     except PackError as exc:
         print(f"오류: {exc}", file=sys.stderr)
         return 2

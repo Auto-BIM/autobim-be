@@ -16,12 +16,13 @@ import argparse
 import csv
 import sys
 import time
+from contextlib import suppress
 from pathlib import Path
 
-from app.core.config import load_settings
+from app.core.config import RecognitionSettings, load_settings
 from app.models.registry import Models, build_models
 from app.preprocess.image import load_image
-from app.recognition.pipeline import image_to_plan
+from app.recognition.pipeline import RecognitionError, image_to_plan
 from eval.measure_latency import _IMAGE_SUFFIXES, percentiles
 
 _MODEL_CALLS = {"segment", "detect", "read"}
@@ -48,7 +49,9 @@ class Timed:
         return timed
 
 
-def time_image(models: Models, image) -> tuple[float, float]:
+def time_image(
+    models: Models, image, rec: RecognitionSettings | None = None
+) -> tuple[float, float]:
     """(predict_s, recognition_s) for one image."""
     acc = [0.0]
     wrapped = Models(
@@ -56,7 +59,7 @@ def time_image(models: Models, image) -> tuple[float, float]:
         Timed(models.dimension_reader, acc),
     )
     start = time.perf_counter()
-    image_to_plan(image, wrapped)
+    image_to_plan(image, wrapped, settings=rec)
     total = time.perf_counter() - start
     return acc[0], total - acc[0]
 
@@ -73,11 +76,20 @@ def main(argv: list[str] | None = None) -> int:
     if not images:
         print(f"오류: 이미지 폴더가 없거나 비었음: {args.images}", file=sys.stderr)
         return 2
-    models = build_models(load_settings(args.config).models)
+    settings = load_settings(args.config)
+    models = build_models(settings.models)
+    with suppress(RecognitionError):  # warm-up call, not timed
+        time_image(models, load_image(images[0].read_bytes()), settings.recognition)
     rows = []
     for i in range(args.n):
         path = images[i % len(images)]
-        predict, recognise = time_image(models, load_image(path.read_bytes()))
+        try:
+            predict, recognise = time_image(
+                models, load_image(path.read_bytes()), settings.recognition
+            )
+        except RecognitionError as exc:  # a failed image has no meaningful split; keep going
+            print(f"건너뜀 {path.name}: {exc.code}", file=sys.stderr)
+            continue
         rows.append({"image": path.name, "predict_s": predict, "recognition_s": recognise})
     with args.out.open("w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, ["image", "predict_s", "recognition_s"])

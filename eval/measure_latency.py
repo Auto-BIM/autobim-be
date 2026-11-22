@@ -5,7 +5,8 @@
 Uploads images one at a time, polls each job to `succeeded`/`failed`, writes one CSV row per job
 and prints p50/p90. `--server-log` adds the per-stage seconds from the server's
 `job <id> completed ... plan=..s` log lines (#13). `--concurrency-check` also uploads two images
-at once and reports whether both succeed. Standard library only, so it runs anywhere.
+at once and reports whether both succeed. Needs only numpy beyond the standard library. A timed-out job keeps running on the server and
+delays the jobs queued behind it.
 """
 
 from __future__ import annotations
@@ -55,7 +56,7 @@ def _request(url: str, data: bytes | None = None, headers: dict | None = None):
 def _upload(base: str, path: Path) -> dict:
     boundary = uuid.uuid4().hex
     body = (
-        f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{path.name}\"\r\n"
+        f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{path.name.replace(chr(34), '_')}\"\r\n"
         "Content-Type: application/octet-stream\r\n\r\n"
     ).encode() + path.read_bytes() + f"\r\n--{boundary}--\r\n".encode()
     return _request(
@@ -77,14 +78,13 @@ def run_job(base: str, path: Path, timeout: float, poll: float = 0.2) -> dict:
                 return row
             time.sleep(poll)
             job = _request(f"{base}/api/jobs/{job['id']}")
+        row["client_s"] = time.perf_counter() - start
+        row["status"] = job["status"]
+        row["error_code"] = (job.get("error") or {}).get("code", "")
+        created = datetime.fromisoformat(job["created_at"])
+        row["server_s"] = (datetime.fromisoformat(job["updated_at"]) - created).total_seconds()
     except (urllib.error.URLError, OSError, KeyError, ValueError) as exc:
         row["status"], row["error_code"] = "error", type(exc).__name__
-        return row
-    row["client_s"] = time.perf_counter() - start
-    row["status"] = job["status"]
-    row["error_code"] = (job.get("error") or {}).get("code", "")
-    created = datetime.fromisoformat(job["created_at"])
-    row["server_s"] = (datetime.fromisoformat(job["updated_at"]) - created).total_seconds()
     return row
 
 
