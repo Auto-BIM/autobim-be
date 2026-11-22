@@ -1,0 +1,3 @@
+# evaluation output must never be committed (AGENTS.md rule 4)
+reports/
+*.csv
