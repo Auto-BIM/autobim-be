@@ -90,7 +90,9 @@ def render_plan_walls(plan: Plan, shape: tuple[int, int]) -> np.ndarray:
     return mask
 
 
-def iou(pred: np.ndarray, gt: np.ndarray) -> float:
+def iou(pred: np.ndarray, gt: np.ndarray, ignore: np.ndarray | None = None) -> float:
+    if ignore is not None:
+        pred, gt = pred & ~ignore, gt & ~ignore
     union = np.logical_or(pred, gt).sum()
     return float(np.logical_and(pred, gt).sum() / union) if union else 1.0
 

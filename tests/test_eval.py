@@ -361,3 +361,19 @@ def test_failed_image_counts_its_openings_as_missed(tmp_path):
     assert s["openings"]["all"]["recall"] == 0.5
     assert s["openings"]["all"]["f1"] == pytest.approx(2 / 3)
     assert s["openings_succeeded_only"]["all"]["f1"] == 1.0
+
+
+def test_ignore_mask_is_excluded_from_iou(tmp_path):
+    gt_labels = _frame([DOOR_GAP, WINDOW_GAP])
+    pred_labels = gt_labels.copy()
+    pred_labels[50:60, 10:110] = 1  # a wall the ground truth knows nothing about
+    pack = make_pack(tmp_path / "pack", {"gt": GT, "pred/seg-v1": (pred_labels, GT[1])}, n=1)
+    sha = json.loads((pack / "manifest.json").read_text())[0]["sha1"]
+    before = run.evaluate(pack, ["pred/seg-v1"])[1]["variants"]["pred/seg-v1"]["wall_iou_mean"]
+    ignore = np.zeros((H, W), np.uint8)
+    ignore[48:62, :] = 255
+    (pack / "ignore" / "gt").mkdir(parents=True)
+    Image.fromarray(ignore).save(pack / "ignore" / "gt" / f"{sha}.png")
+    after = run.evaluate(pack, ["pred/seg-v1"])[1]["variants"]["pred/seg-v1"]["wall_iou_mean"]
+    assert before < 0.99 and after > before
+    assert metrics.iou(np.ones((4, 4), bool), np.zeros((4, 4), bool), np.ones((4, 4), bool)) == 1.0

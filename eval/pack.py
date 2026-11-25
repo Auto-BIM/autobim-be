@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
 from app.models.replay import ReplayModel
 from app.preprocess.image import load_image
@@ -21,6 +22,7 @@ class PackError(Exception):
 class Sample:
     id: str
     image: np.ndarray
+    ignore: np.ndarray | None = None  # True where the pack has no ground truth
 
 
 def open_variant(pack: Path, variant: str) -> ReplayModel:
@@ -28,6 +30,21 @@ def open_variant(pack: Path, variant: str) -> ReplayModel:
         return ReplayModel(pack, variant)
     except ValueError as exc:
         raise PackError(f"평가 팩을 열 수 없음 ({variant}): {exc}") from exc
+
+
+def _load_ignore(pack: Path, sha1: str, shape: tuple[int, int]) -> np.ndarray | None:
+    """`ignore/gt/<sha1>.png` (255 = no ground truth); packs without it just have no ignore area."""
+    path = pack / "ignore" / "gt" / f"{sha1}.png"
+    if not path.is_file():
+        return None
+    try:
+        with Image.open(path) as source:
+            mask = np.asarray(source) == 255
+    except OSError as exc:
+        raise PackError(f"ignore 마스크를 읽을 수 없음: {path}: {exc}") from exc
+    if mask.shape != shape:
+        raise PackError(f"ignore 마스크 크기가 이미지와 다름: {path}")
+    return mask
 
 
 def iter_samples(pack: Path):
@@ -46,4 +63,4 @@ def iter_samples(pack: Path):
             raise PackError(
                 f"이미지 {sid}의 sha1이 manifest와 다름(디코딩 결과가 팩 제작 쪽과 다름): {rel}"
             )
-        yield Sample(str(sid), image)
+        yield Sample(str(sid), image, _load_ignore(pack, sha1, image.shape[:2]))

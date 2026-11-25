@@ -66,7 +66,9 @@ def _row(variant, sample, model, gt_mask, gt_boxes, rec: RecognitionSettings) ->
     reasons = Counter(r.reason.value for r in plan.review_items)
     row.update(
         status="succeeded", error_code="",
-        wall_iou=metrics.iou(metrics.render_plan_walls(plan, gt_mask.shape), gt_mask),
+        wall_iou=metrics.iou(
+            metrics.render_plan_walls(plan, gt_mask.shape), gt_mask, sample.ignore
+        ),
         length_plan_px=l_plan, length_gt_px=l_gt, length_error=l_err,
         plan_openings=len(plan.openings), review_items=len(plan.review_items),
         pos_err_px_mean=_mean(m.pos_err), width_err_px_mean=_mean(m.width_err),
@@ -129,7 +131,7 @@ def evaluate(
         "images": images,
         "units": "px",
         "notes": [
-            "ignore(255) regions are not excluded: the pack stores them as background",
+            "wall IoU excludes ignore/gt (255) pixels when the pack has them; length and openings do not",
             "opening ground truth = openings/gt boxes (same function as serving), not gt/<id>.json",
         ],
         "variants": {v: _aggregate(rs) for v, rs in by_variant.items()},
