@@ -123,12 +123,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.server_log:
         try:
             stages = parse_server_log(args.server_log.read_text(encoding="utf-8", errors="replace"))
-        except OSError as exc:
-            print(f"오류: 서버 로그를 읽을 수 없음: {exc}", file=sys.stderr)
-            return 2
-        for r in rows:
-            for k in STAGES:
-                r[f"log_{k}_s"] = stages.get(r["job_id"], {}).get(k)
+        except OSError as exc:  # keep the measurements; only the log columns are lost
+            print(f"경고: 서버 로그를 읽을 수 없어 로그 열 없이 저장함: {exc}", file=sys.stderr)
+            args.server_log = None
+        else:
+            for r in rows:
+                for k in STAGES:
+                    r[f"log_{k}_s"] = stages.get(r["job_id"], {}).get(k)
+            missing = [r["job_id"] for r in rows if r["job_id"] and r["job_id"] not in stages]
+            if missing:
+                print(
+                    f"경고: 서버 로그에 없는 작업 {len(missing)}/{len(rows)}개 "
+                    "(로그가 다른 서버/기간이거나 아직 기록 전일 수 있음)", file=sys.stderr,
+                )
     fields = ["image", "job_id", "status", "error_code", "client_s", "server_s",
               *(f"log_{k}_s" for k in STAGES if args.server_log)]
     with args.out.open("w", newline="", encoding="utf-8-sig") as f:

@@ -113,7 +113,8 @@ def skeleton_length(mask: np.ndarray) -> float:
     Plan centreline does. A thickness only counts if enough pixels share it to form a band
     four times longer than thick (a junction square has only ~t^2 of them), so walls of
     different thickness do not get mistaken for junctions. ponytail: T/+ junctions stay
-    ~0.5t/1t short and slanted walls are overcounted; swap in real thinning if that matters.
+    ~0.5t/1t short and slanted walls are undercounted
+    (about 70% of the true length at 45 degrees); swap in real thinning if that matters.
     """
     across = np.minimum(_run_lengths(mask), _run_lengths(mask.T).T)[mask]
     if not across.size:

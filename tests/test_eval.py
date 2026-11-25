@@ -1,3 +1,4 @@
+import csv
 import hashlib
 import io
 import json
@@ -236,11 +237,8 @@ def test_measure_latency_against_server(live_server, tmp_path):
     images.mkdir()
     Image.new("RGB", (40, 30), "white").save(images / "a.png")
     out = tmp_path / "lat.csv"
-    log = tmp_path / "server.log"
-    log.write_text("", encoding="utf-8")
     code = measure_latency.main(
-        ["--url", live_server, "--images", str(images), "-n", "3", "-o", str(out),
-         "--server-log", str(log)]
+        ["--url", live_server, "--images", str(images), "-n", "3", "-o", str(out)]
     )
     assert code == 0
     lines = out.read_text(encoding="utf-8-sig").splitlines()
@@ -296,3 +294,70 @@ def test_repeated_variant_is_counted_once(tmp_path):
     pack = make_pack(tmp_path / "pack", {"gt": GT})
     _, summary = run.evaluate(pack, ["gt", "gt"])
     assert summary["variants"]["gt"]["images"] == 2
+
+
+def _stub_jobs(monkeypatch):
+    """Fixed job ids, so a server log can name them without a real server."""
+    counter = iter(range(100))
+    monkeypatch.setattr(
+        measure_latency, "run_job",
+        lambda base, path, timeout: {
+            "image": path.name, "job_id": f"job{next(counter)}", "status": "succeeded",
+            "error_code": "", "client_s": 2.0, "server_s": 1.9,
+        },
+    )
+
+
+def _latency_args(tmp_path, out):
+    images = tmp_path / "imgs"
+    images.mkdir(exist_ok=True)
+    Image.new("RGB", (40, 30), "white").save(images / "a.png")
+    return ["--url", "http://x", "--images", str(images), "-n", "2", "-o", str(out)]
+
+
+def test_server_log_is_merged_by_job_id(tmp_path, monkeypatch):
+    _stub_jobs(monkeypatch)
+    log = tmp_path / "server.log"
+    log.write_text("\n".join(
+        f"INFO job job{i} completed code=none wait=0.1s decode=0.2s plan=1.5s "
+        "supplement=0.0s export=0.3s total=2.1s" for i in range(2)
+    ), encoding="utf-8")
+    out = tmp_path / "lat.csv"
+    assert measure_latency.main([*_latency_args(tmp_path, out), "--server-log", str(log)]) == 0
+    rows = list(csv.DictReader(out.open(encoding="utf-8-sig")))
+    assert [r["log_plan_s"] for r in rows] == ["1.5", "1.5"]
+    assert [r["log_total_s"] for r in rows] == ["2.1", "2.1"]
+
+
+def test_server_log_without_matching_jobs_warns(tmp_path, monkeypatch, capsys):
+    _stub_jobs(monkeypatch)
+    log = tmp_path / "server.log"
+    log.write_text("", encoding="utf-8")
+    out = tmp_path / "lat.csv"
+    assert measure_latency.main([*_latency_args(tmp_path, out), "--server-log", str(log)]) == 0
+    assert "서버 로그에 없는 작업 2/2" in capsys.readouterr().err
+
+
+def test_unreadable_server_log_keeps_the_csv(tmp_path, monkeypatch, capsys):
+    _stub_jobs(monkeypatch)
+    out = tmp_path / "lat.csv"
+    args = [*_latency_args(tmp_path, out), "--server-log", str(tmp_path / "missing.log")]
+    assert measure_latency.main(args) == 0
+    lines = out.read_text(encoding="utf-8-sig").splitlines()
+    assert len(lines) == 3 and "log_plan_s" not in lines[0]
+    assert "경고" in capsys.readouterr().err
+
+
+def test_failed_image_counts_its_openings_as_missed(tmp_path):
+    ok = GT
+    pack = make_pack(tmp_path / "pack", {"gt": GT, "pred/seg-v1": ok}, n=2)
+    # second image: empty prediction -> recognition fails
+    sha = json.loads((pack / "manifest.json").read_text())[1]["sha1"]
+    Image.fromarray(np.zeros((H, W), np.uint8)).save(pack / "labels/pred/seg-v1" / f"{sha}.png")
+    _, summary = run.evaluate(pack, ["pred/seg-v1"])
+    s = summary["variants"]["pred/seg-v1"]
+    assert s["success_rate"] == 0.5
+    assert (s["openings"]["all"]["tp"], s["openings"]["all"]["fn"]) == (2, 2)
+    assert s["openings"]["all"]["recall"] == 0.5
+    assert s["openings"]["all"]["f1"] == pytest.approx(2 / 3)
+    assert s["openings_succeeded_only"]["all"]["f1"] == 1.0

@@ -50,12 +50,17 @@ def _row(variant, sample, model, gt_mask, gt_boxes, rec: RecognitionSettings) ->
     _pack_call(model.segment, sample.image)  # a broken pack file is a pack error, not a failed image
     row["detections"] = len(_pack_call(model.detect, sample.image))
     models = Models(model, model, NullDimensionReader())
+    # A failed image still has ground-truth openings: they all count as missed (FN).
+    missed = {t: (0, 0, sum(b.type.value == t for b in gt_boxes)) for t in TYPES}
+    failed = {**row, "status": "failed", "_types": missed}
+    for t in TYPES:
+        failed[f"{t}_tp"], failed[f"{t}_fp"], failed[f"{t}_fn"] = missed[t]
     try:
         plan = image_to_plan(sample.image, models, filename=sample.id, settings=rec)
     except RecognitionError as exc:
-        return {**row, "status": "failed", "error_code": exc.code}
+        return {**failed, "error_code": exc.code}
     except Exception as exc:  # noqa: BLE001 — same split as app/jobs/runner.py
-        return {**row, "status": "failed", "error_code": f"internal_error:{type(exc).__name__}"}
+        return {**failed, "error_code": f"internal_error:{type(exc).__name__}"}
     l_plan, l_gt, l_err = metrics.length_error(plan, gt_mask)
     m = metrics.match_openings(gt_boxes, metrics.plan_openings_px(plan), estimate_thickness(gt_mask))
     reasons = Counter(r.reason.value for r in plan.review_items)
@@ -78,8 +83,11 @@ def _row(variant, sample, model, gt_mask, gt_boxes, rec: RecognitionSettings) ->
 
 def _aggregate(rows: list[dict]) -> dict:
     ok = [r for r in rows if r["status"] == "succeeded"]
-    sums = {t: [sum(r["_types"][t][i] for r in ok) for i in range(3)] for t in TYPES}
-    sums["all"] = [sum(sums[t][i] for t in TYPES) for i in range(3)]
+    def totals(rs):
+        sums = {t: [sum(r["_types"][t][i] for r in rs) for i in range(3)] for t in TYPES}
+        sums["all"] = [sum(sums[t][i] for t in TYPES) for i in range(3)]
+        return {t: {"tp": s[0], "fp": s[1], "fn": s[2], **metrics.prf(*s)} for t, s in sums.items()}
+
     pos = [e for r in ok for e in r["_pos"]]
     wid = [e for r in ok for e in r["_wid"]]
     errs = [r["length_error"] for r in ok if r["length_error"] is not None]
@@ -90,9 +98,9 @@ def _aggregate(rows: list[dict]) -> dict:
         "failures": dict(Counter(r["error_code"] for r in rows if r["status"] == "failed")),
         "wall_iou_mean": _mean([r["wall_iou"] for r in ok]),
         "length_error_mean": _mean(errs),
-        "openings": {
-            t: {"tp": s[0], "fp": s[1], "fn": s[2], **metrics.prf(*s)} for t, s in sums.items()
-        },
+        # default: failed images count their gt openings as FN; the second keeps only succeeded ones
+        "openings": totals(rows),
+        "openings_succeeded_only": totals(ok),
         "matched_pairs": len(pos),
         "position_error_px_median": statistics.median(pos) if pos else None,
         "width_error_px_median": statistics.median(wid) if wid else None,
