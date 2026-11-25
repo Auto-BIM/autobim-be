@@ -236,14 +236,43 @@ GitHub: [#6](https://github.com/Auto-BIM/autobim-be/issues/6)
 
 GitHub: [#14](https://github.com/Auto-BIM/autobim-be/issues/14)
 
-IFC 내보내기·합성 테스트·SketchUp 검증과 문서를 담당한다.
-다운로드 API는 별도 [#38](https://github.com/Auto-BIM/autobim-be/issues/38) 계약 PR이다.
-실제 적용 버전과 제공 한계는 [SketchUp 사용법](sketchup.md)을 따른다.
+**배경**: `.dxf`는 벽마다 블록(polyface 메시) + INSERT, 레이어 `A-WALL`·`A-DOOR`·`A-WINDOW`, mm 단위다. 시연에서 SketchUp으로 열어 보여 주려면 실제 버전에서 확인해야 한다(SketchUp 버전은 미결 O-08).
 
-- 팀 Plan·3D 메시를 유지하며 벽별 IFC 객체와 문·창·개구부를 출력한다.
-- DXF의 mm 단위·벽 블록·세 태그를 검사한다. 빈 블록 정책은 #23이다.
-- SketchUp 객체 선택·편집·저장·재열기·재출력 근거와 미확인을 기록한다.
-- ifcopenshell 의존성과 Linux Python 3.11 락을 추가하고 팀 CI에서 재확인한다.
+**확인 결과 (2026-11-01, SketchUp 2025 Windows)**: 데모 파일로 확인했다.
+- `.dxf`: 형상은 정상이나 벽마다 블록을 줬는데도 **한 덩어리로 선택된다**. 레이어는 Tag로 들어온다.
+- `.ifc`: `WALL_<id>`, `DOOR_<id>`가 **별도 그룹**으로 들어온다(Site > Building > Level 0 아래 중첩). 높이·문창 위치 정상.
+
+**포맷 차이와 결론**
+- `.dxf`는 도형·레이어만 담아서 "이 면들이 벽 하나"를 파일이 보장하지 않는다. 가져오는 프로그램이 블록을 합쳐도 규격 위반이 아니다.
+- `.ifc`는 건축 객체(`IfcWall`, `IfcDoor`, `IfcWindow`)와 이름·ID를 담는 BIM 표준이라 객체 단위가 보장된다.
+- 실무에서는 벽 이동·두께 변경·문 위치 조정·물량 산출에 객체 구분이 필요하다. 벽마다 레이어를 두는 우회책은 레이어가 벽 수만큼 늘어 실무에서 쓰기 어려워 채택하지 않는다.
+- 실무 흐름은 CAD(`.dwg`)에서 도면을 그린 뒤 SketchUp에서 3D로 만들어 `.skp`로 저장하는 것이다(사용자 확인). 우리 출력은 CAD 이후 단계, 즉 SketchUp에서 쓰인다. 그래서 **`.ifc`를 SketchUp용 주 출력으로 추가하고, `.dxf`는 기존대로 둔다(보조).**
+
+**범위 밖**
+- `.skp` 출력: 비공개 포맷이고 서버에서 쓸 공식 경로(Linux·서버 라이선스)가 불확실하다. 사람이 SketchUp에서 저장하는 결과물로 본다.
+- AutoCAD 호환 확인, `.dwg` 입출력, 입력 형식 변경(이미지·`.dxf` 유지).
+
+**건드리는 폴더**: `app/export/dxf.py`(필요 시), `tests/test_export_dxf.py`(신규), `docs/sketchup.md`(신규), `app/export/ifc.py`(신규), `tests/test_export_ifc.py`(신규), `pyproject.toml`·`requirements*.lock`. API 연결(`app/schemas/jobs.py`, `app/api/`, `docs/openapi.json`, `docs/api.md`)은 **별도 계약 PR**(#38).
+
+**관련**: #23(`.dxf` 빈 개구부 블록)은 같은 파일을 건드리고 이 이슈의 SketchUp 확인 결과를 쓴다. 별도 이슈로 두고, 확인 결과는 `docs/sketchup.md`로 공유한다. IFC는 개구부가 잘려 나가면 문 객체를 만들지 않는다.
+
+**할 일**
+- Fake 도면 + 실제 도면 2장의 `.dxf`를 SketchUp에서 가져오기(단위 mm). 확인: 벽마다 컴포넌트, 태그(레이어) 3개, 면이 생김, 개구부 구멍, 크기.
+- ~~polyface가 면으로 안 들어오면 `3DFACE` 옵션 추가~~ → 폴리페이스는 SketchUp 2025에서 면으로 잘 들어와서 하지 않는다.
+- 결과와 스크린샷 위치를 `docs/sketchup.md`에 적는다(이미지 파일은 커밋하지 않음).
+- `.ifc` 출력: 벽마다 `IfcWall`, 개구부마다 구멍 + `IfcDoor`/`IfcWindow`(접합부·개구부 범위는 3D와 동일, #2 반영). 구현·테스트 완료(PR 전). 팀 브랜치 `feature/14-sketchup-dxf`의 마지막 커밋은 11/2 `cbee7e6`이고, 이후 작업은 개인 레포에서 진행했다. IFC 내보내기, SketchUp 편집 후 저장·재열기·IFC 재가져오기, 실제 도면 Plan 2건을 자동 검증했다.
+- `ifcopenshell` 기본 의존성 추가, 락 파일 재생성(Linux, Python 3.11), arm64 Docker 빌드 확인.
+- 계약 PR(`.ifc` 다운로드 API)은 #38로 옮겼다.
+- SketchUp에서 이 레포가 만든 `.ifc`/`.dxf`를 확인한다. IFC를 가져와 수정하고 `.skp`로 저장한 뒤 다시 내보냈을 때 객체 정보가 유지되는지도 본다.
+
+**완료 조건**
+- [ ] 팀이 정한 SketchUp 버전에서 위 항목이 확인됐다.
+- [ ] 내보내기 방식을 바꿨다면 블록 수 = 벽 수, `$INSUNITS = 4` 테스트.
+- [x] 벽 N개 → `IfcWall` N개, 문/창이 구멍과 연결되고 벽 부피가 3D와 일치한다(테스트).
+- [x] FreeCAD 1.1(독립 IFC 가져오기)에서 프로젝트 > 대지 > 건물 > 층 아래 벽·문·창이 각각 별도 객체로 열리고 개구부가 뚫려 있다.
+- [ ] SketchUp 2025에서 이 레포가 만든 `.ifc`의 벽·문·창이 각각 별도 그룹으로 들어온다.
+- [ ] 락 파일이 Linux/Python 3.11 기준이고 Docker 빌드(arm64 포함)가 통과한다.
+- `.ifc` API 다운로드 조건은 #38로 옮겼다.
 
 ---
 

@@ -1,6 +1,6 @@
 """Union wall-local rectangles before extruding: no hidden faces between pieces.
 
-The grid uses exact break coordinates from build3d._pieces. It is independent of
+The grid uses exact break coordinates from app.geometry.walls.wall_pieces. It is independent of
 wall rotation and introduces no geometry dependency or geometric tolerance.
 """
 from collections import defaultdict
@@ -103,21 +103,3 @@ def swept_wall_solids(f, wall, rectangles, depth):
         solids.append(f.createIfcExtrudedAreaSolid(profile, position, direction, float(depth)))
     return solids
 
-
-def swept_box(f, box):
-    """Create a native rectangular extrusion for a vertical opening/leaf box."""
-    import math
-
-    width, depth = math.dist(box[0], box[1]), math.dist(box[0], box[3])
-    height = box[4][2] - box[0][2]
-    if min(width, depth, height) <= 0:
-        raise ValueError("Opening solid dimensions must be positive")
-    ux, uy = ((box[1][i] - box[0][i]) / width for i in (0, 1))
-    profile = f.createIfcRectangleProfileDef("AREA", None,
-        f.createIfcAxis2Placement2D(f.createIfcCartesianPoint((width/2, depth/2)), None),
-        float(width), float(depth))
-    placement = f.createIfcAxis2Placement3D(
-        f.createIfcCartesianPoint(tuple(float(c) for c in box[0])),
-        f.createIfcDirection((0., 0., 1.)), f.createIfcDirection((float(ux), float(uy), 0.)))
-    return f.createIfcExtrudedAreaSolid(profile, placement,
-                                      f.createIfcDirection((0., 0., 1.)), float(height))
