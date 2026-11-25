@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from app.export.dxf import write_dxf
@@ -12,6 +13,7 @@ from app.geometry.walls import build_wall_meshes
 from app.schemas.jobs import FileKind
 from app.schemas.plan import Plan
 
+log = logging.getLogger(__name__)
 FILE_NAMES = {FileKind.json: "plan.json", FileKind.glb: "model.glb", FileKind.dxf: "model.dxf", FileKind.ifc: "model.ifc"}
 
 
@@ -23,5 +25,9 @@ def write_outputs(plan: Plan, out_dir: Path) -> dict[FileKind, Path]:
     meshes = build_wall_meshes(plan, junctions)
     write_glb(meshes, paths[FileKind.glb])
     write_dxf(plan, meshes, paths[FileKind.dxf], junctions)
-    write_ifc(plan, meshes, paths[FileKind.ifc], junctions)
+    try:  # IFC is the only output allowed to fail: glb/dxf/json stay downloadable
+        write_ifc(plan, meshes, paths[FileKind.ifc], junctions)
+    except Exception:
+        log.exception("IFC export failed; job succeeds without ifc")
+        paths.pop(FileKind.ifc).unlink(missing_ok=True)
     return paths

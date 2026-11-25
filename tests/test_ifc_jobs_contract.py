@@ -97,3 +97,37 @@ def test_failed_job_does_not_offer_ifc_download(client, png_bytes, monkeypatch):
     response = client.get(job_url + "/files/ifc")
     assert response.status_code == 409
     assert response.json()["detail"]["code"] == "not_ready"
+
+
+def _break_ifc(monkeypatch):
+    def boom(*args, **kwargs):
+        Path(args[2]).write_text("partial")  # a half-written file must be removed
+        raise RuntimeError("ifc boom")
+
+    monkeypatch.setattr("app.export.write_ifc", boom)
+
+
+def test_ifc_failure_keeps_other_outputs_and_job_succeeds(client, png_bytes, settings, monkeypatch):
+    _break_ifc(monkeypatch)
+    job = upload(client, png_bytes)
+    assert set(job["files"]) == {"json", "glb", "dxf"}
+    for kind in ("json", "glb", "dxf"):
+        assert client.get(job["files"][kind]).status_code == 200
+    response = client.get(f"/api/jobs/{job['id']}/files/ifc")
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "file_not_found"
+    assert client.app.state.store.get(job["id"]).downloads == 0
+    assert not list(Path(settings.storage.data_dir).rglob("model.ifc"))
+
+
+def test_ifc_failure_after_success_does_not_serve_old_revision(client, png_bytes, monkeypatch):
+    job = upload(client, png_bytes)
+    assert client.get(job["files"]["ifc"]).status_code == 200
+    _break_ifc(monkeypatch)
+    wall_id = job["plan"]["walls"][0]["id"]
+    resp = client.post(f"/api/jobs/{job['id']}/supplement", json={"walls": [{"id": wall_id, "height": 2600}]})
+    assert resp.status_code == 202
+    job = client.get(f"/api/jobs/{job['id']}").json()
+    assert job["status"] == "succeeded" and "ifc" not in job["files"]
+    assert client.get(f"/api/jobs/{job['id']}/files/ifc").status_code == 404
+    assert client.get(job["files"]["glb"]).status_code == 200

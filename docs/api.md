@@ -133,7 +133,7 @@ succeeded | failed(plan 있음) ──(supplement)──▶ queued (revision+1)
 | `input` | `JobInput` | 항상 | 업로드한 파일 정보 |
 | `plan` | `Plan` | null 가능 | `result_revision`의 Plan. 아래 [Plan](#plan-schema_version-10) 참고 |
 | `error` | `JobError` | null 가능 | 최신 리비전이 실패한 이유. 성공하거나 다시 대기하면 `null` |
-| `files` | object | 항상(빈 객체 가능) | 키 `json` · `glb` · `dxf` · `ifc` → 다운로드 경로. `result_revision`이 없으면 `{}` |
+| `files` | object | 항상(빈 객체 가능) | 키 `json` · `glb` · `dxf` · `ifc` → 다운로드 경로. `ifc`는 생성 실패 시 빠질 수 있다. `result_revision`이 없으면 `{}` |
 | `removed` | `RemovedElement[]` | 항상(빈 배열 가능) | 지금까지 지워진 요소 |
 
 **JobInput**
@@ -372,4 +372,7 @@ IfcOpeningElement와 DOOR/WINDOW 객체로 연결한다. mm 단위이며 팀 3D 
 유효 절단 구간이 없거나 벽 높이와 겹치지 않는 문·창은 입체 객체를 만들지 않는다.
 보충 입력 뒤에는 다른 출력과 같은 revision으로 재생성하며 제거된 객체는 IFC에서도 사라진다.
 404는 알 수 없는 작업 또는 저장소에 없는 출력 파일, 409는 아직 성공한 출력 없음, 422는 유효하지 않은 kind다.
+IFC 생성만 실패하면 작업은 `succeeded`로 끝나고 `files`에 `ifc`가 없을 수 있다(로그에만 남는다).
+이때 `GET /files/ifc`는 404 `file_not_found`이고, 이전 리비전의 IFC는 돌려주지 않는다.
+glb·dxf·json 생성 실패는 지금처럼 작업 실패다.
 IFC 파일 생성이 성공했다는 사실은 SketchUp의 객체별 편집 성공을 뜻하지 않는다.

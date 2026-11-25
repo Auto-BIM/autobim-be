@@ -173,6 +173,8 @@ def get_job_file(request: Request, job_id: str, kind: FileKind) -> FileResponse:
         raise _error(404, "job_not_found", f"job {job_id!r} not found")
     try:
         path = record.outputs.get(kind)  # last successful revision, even while regenerating
+        if path is None and record.outputs:  # a result exists but lacks this kind (e.g. IFC export failed)
+            raise _error(404, "file_not_found", f"output {kind.value!r} was not produced")
         if path is None:
             raise _error(409, "not_ready", f"job is {record.job.status.value}; no files yet")
         if not path.is_file():
