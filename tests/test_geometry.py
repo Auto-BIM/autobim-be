@@ -783,3 +783,15 @@ def test_branch_end_past_the_centerline_is_not_a_crossing(over):
 
     plan = _walls_plan([("a", (0, 0), (4000, 0), 120), ("b", (2000, -1500), (2000, over), 120)])
     assert wall_crossings(plan.walls) == ({}, {})
+
+
+def test_issue_24_repro_outer_ring_with_two_crossing_interior_walls():
+    """The issue's input at 5 mm/px: outer ring t=20 px, interior walls x=250 and y=200, t=12 px."""
+    ring = [(0, 0), (2500, 0), (2500, 2000), (0, 2000)]
+    walls = [(f"o{k}", ring[k], ring[(k + 1) % 4], 100) for k in range(4)]
+    walls += [("v", (1250, 0), (1250, 2000), 60), ("h", (0, 1000), (2500, 1000), 60)]
+    meshes = build_wall_meshes(_walls_plan(walls))
+    _, n = _counts(meshes, (-50, -50, 2550, 2050), step=10.0)
+    assert n.max() == 1  # no overlap anywhere
+    _, n = _counts(meshes, (1220, 970, 1280, 1030), step=3.0)
+    assert n.min() == 1  # the crossing is filled
