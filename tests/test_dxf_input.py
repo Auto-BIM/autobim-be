@@ -262,3 +262,18 @@ def test_arc_on_an_unclassified_layer_is_ignored():
     doc.modelspace().add_arc((4500, 4000), 800, 180, 270, dxfattribs={"layer": "FURNITURE"})
     plan = to_plan(doc)
     assert len(plan.openings) == 3
+
+
+def test_window_drawn_with_several_lines_is_one_opening():
+    doc = make_doc()
+    msp = doc.modelspace()
+    # one window on the top wall as two full-width lines and a cross mullion
+    for a, b in [((1000, 3975), (2600, 3975)), ((2600, 4025), (1000, 4025)),
+                 ((1800, 3900), (1800, 4100)),
+                 # two separate windows side by side on the same wall
+                 ((3400, 4000), (4400, 4000)), ((4600, 4000), (5600, 4000))]:
+        msp.add_line(a, b, dxfattribs={"layer": "A-WINDOW"})
+    plan = to_plan(doc)
+    top = [(opening_world(plan, o)[0], o.width) for o in plan.openings
+           if abs(opening_world(plan, o)[0][1] - 4000) < 1]
+    assert sorted((round(c[0]), round(w)) for c, w in top) == [(1800, 1600), (3900, 1000), (5100, 1000)]

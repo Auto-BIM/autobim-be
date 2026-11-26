@@ -72,10 +72,35 @@ def _insert_on_wall(e, walls):
     return best and best[1:]
 
 
+def _duplicate_window_lines(items) -> set[int]:
+    """창 하나를 평행선 여러 개로 그린 경우 가장 긴 선만 남긴다. 버릴 선의 엔티티 id를 돌려준다.
+
+    벽 두께 안에서 나란히 절반 넘게 겹치면 같은 창으로 본다. 옆으로 나란한 창은 겹치지 않아 남는다.
+    """
+    lines = [(math.dist(*e.points), e) for e, p in items if p.label == "window" and e.kind == "LINE"]
+    kept, dropped = [], set()
+    for length, e in sorted(lines, key=lambda x: -x[0]):
+        if not WINDOW_SIZE_RANGE[0] <= length <= WINDOW_SIZE_RANGE[1]:
+            continue
+        for base_length, ((x0, y0), (x1, y1)) in kept:
+            ux, uy = (x1 - x0) / base_length, (y1 - y0) / base_length
+            s, d = zip(*[((x - x0) * ux + (y - y0) * uy, (y - y0) * ux - (x - x0) * uy) for x, y in e.points])
+            if (abs(d[1] - d[0]) <= 0.02 * length and abs(d[0]) <= WALL_PAIR_THICKNESS[1]
+                    and min(max(s), base_length) - max(min(s), 0) > 0.5 * length):
+                dropped.add(e.id)
+                break
+        else:
+            kept.append((length, e.points))
+    return dropped
+
+
 def _candidates(items, walls):
     """개구부 후보: (id, type, 중심, 폭 또는 None, 신뢰도)."""
     out = []
+    duplicates = _duplicate_window_lines(items)
     for e, p in items:
+        if e.id in duplicates:
+            continue
         if p.label == "door" and e.kind == "ARC":
             hinge, a, b = e.points
             far = min((a, b), key=lambda q: (_nearest_wall(q, walls) or (None, 0, 1e9))[2])
