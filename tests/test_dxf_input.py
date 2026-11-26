@@ -255,3 +255,10 @@ def test_double_line_outline_with_single_line_partition():
     got = kinds(to_plan(doc))
     assert got[((3000, 100), (3000, 3900))] == ("interior", 120)
     assert sorted(v for k, v in got.items() if k != ((3000, 100), (3000, 3900))) == [("exterior", 200)] * 4
+
+
+def test_arc_on_an_unclassified_layer_is_ignored():
+    doc = make_doc()
+    doc.modelspace().add_arc((4500, 4000), 800, 180, 270, dxfattribs={"layer": "FURNITURE"})
+    plan = to_plan(doc)
+    assert len(plan.openings) == 3
