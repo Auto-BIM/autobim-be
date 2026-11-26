@@ -92,13 +92,23 @@ def _clear(d, t, axis, rect_t, lo, hi):
     return max(0.0, max(q[0] * d[0] + q[1] * d[1] for q in poly))
 
 
+class Zones(list):
+    """One wall's zones. `cuts`: intervals a crossing wall fills (`wall_crossings`), left empty
+    here. They travel with the zones so every caller that passes zones on gets them."""
+
+    def __init__(self, zones=(), cuts=()):
+        super().__init__(zones)
+        self.cuts = list(cuts)
+
+
 def wall_junctions(
     walls: list[Wall],
 ) -> tuple[dict[str, tuple[float, float]], dict[str, list[tuple[float, float]]]]:
     """(extensions, zones). Extensions: wall ID -> (extension at start, at end) in mm along the
     centerline. Zones: wall ID -> wall-local s intervals (from the wall's start) where other walls'
     end faces rest on this wall (their final end corners projected on this wall's axis);
-    openings must not cut there, so corners and branch roots stay supported."""
+    openings must not cut there, so corners and branch roots stay supported. Each list is a `Zones`
+    that also carries that wall's crossing cuts."""
     ordered = sorted(walls, key=_key)
     ext = {w.id: [0.0, 0.0] for w in ordered}
     ends = [(w, i, (w.start.x, w.start.y) if i == 0 else (w.end.x, w.end.y))
@@ -208,7 +218,8 @@ def wall_junctions(
                 elif z0 >= hi - TOL:
                     z0, z1 = hi - (z1 - z0), hi
                 zones[b.id].append((z0, z1))
-    return out, zones
+    cuts, rests = wall_crossings(walls)
+    return out, {i: Zones(z + rests.get(i, []), cuts.get(i, [])) for i, z in zones.items()}
 
 
 def wall_crossings(
