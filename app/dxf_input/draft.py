@@ -5,7 +5,6 @@ from app.core import defaults
 
 EXTERIOR_THICKNESS = defaults.EXTERIOR_WALL_THICKNESS  # 단선 벽 기본 두께: 외벽 / 내벽
 INTERIOR_THICKNESS = defaults.INTERIOR_WALL_THICKNESS
-WALL_THICKNESS = EXTERIOR_THICKNESS
 # 개구부 종류별 (폭, 높이, 바닥에서 시작 높이)
 OPENING_DEFAULTS = {
     "door": (defaults.DOOR_WIDTH, defaults.DOOR_HEIGHT, 0.0),
@@ -18,7 +17,7 @@ class Wall:
     id: str
     start: tuple[float, float]
     end: tuple[float, float]
-    thickness: float = WALL_THICKNESS
+    thickness: float = EXTERIOR_THICKNESS
     confidence: float = 1.0
     kind: str = "unknown"  # exterior | interior | unknown
 

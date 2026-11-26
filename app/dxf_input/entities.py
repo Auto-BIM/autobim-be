@@ -76,10 +76,6 @@ def _read_doc(path: str):
         return ezdxf.read(io.StringIO(fixed))
 
 
-def read_entities(path: str) -> list[Entity]:
-    return read_dxf(path).entities
-
-
 def read_dxf(path: str) -> DxfData:
     doc = _read_doc(path)
     # 단위 미지정(0)이면 mm로 가정
