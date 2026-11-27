@@ -41,3 +41,8 @@ samples/
 .vscode/
 .DS_Store
 .env
+
+# eval/ outputs when run from the repo root
+/reports/
+/latency.csv
+/stages.csv
