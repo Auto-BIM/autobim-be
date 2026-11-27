@@ -739,3 +739,59 @@ def _ext_zones(plan, wid):
 
     ext, zones = wall_junctions(plan.walls)
     return ext[wid], zones[wid]
+
+
+# ---- walls crossing in the middle (issue #24) ----
+
+def _cross(t_a, t_b, deg, openings=()):
+    r = np.radians(deg)
+    return _walls_plan([("a", (0, 0), (4000, 0), t_a),
+                        ("b", (2000 - 1500 * np.cos(r), -1500 * np.sin(r)),
+                         (2000 + 1500 * np.cos(r), 1500 * np.sin(r)), t_b)], openings)
+
+
+@pytest.mark.parametrize("t_a, t_b", [(120, 120), (200, 120), (120, 200)])
+def test_perpendicular_cross_fills_the_crossing_once(t_a, t_b):
+    meshes = build_wall_meshes(_cross(t_a, t_b, 90))
+    _, n = _counts(meshes, (1400, -700, 2600, 700))
+    assert n.max() == 1  # no overlap
+    pts, n = _counts(meshes, (1950, -50, 2050, 50))
+    assert n.min() == 1  # no gap in the crossing
+    assert sum(m.volume for m in meshes.values()) == pytest.approx((4000 * t_a + 3000 * t_b - t_a * t_b) * H)
+
+
+@pytest.mark.parametrize("deg", [30, 45, 60, 120])
+def test_oblique_cross_does_not_overlap(deg):
+    _, n = _counts(build_wall_meshes(_cross(200, 120, deg)), (1200, -800, 2800, 800))
+    assert n.max() == 1
+
+
+def test_door_over_a_crossing_is_split_and_keeps_the_through_walls_roots():
+    door = {"id": "d", "type": "door", "wall_id": "b", "position": 1500, "width": 900, "height": 2100}
+    plan = _cross(120, 120, 90, [door])
+    _, n = _counts(build_wall_meshes(plan), (1400, -700, 2600, 700))
+    assert n.max() == 1
+    on_a = {**door, "wall_id": "a", "position": 2000}
+    _, n = _counts(build_wall_meshes(_cross(200, 120, 90, [on_a])), (1400, -700, 2600, 700))
+    assert n.max() == 1 and plan.openings[0].width == 900  # Plan values unchanged
+
+
+@pytest.mark.parametrize("over", [5, 30, 59])
+def test_branch_end_past_the_centerline_is_not_a_crossing(over):
+    """An end inside the other wall's strip (issue #22 territory) must not hollow the through wall."""
+    from app.geometry.junctions import wall_crossings
+
+    plan = _walls_plan([("a", (0, 0), (4000, 0), 120), ("b", (2000, -1500), (2000, over), 120)])
+    assert wall_crossings(plan.walls) == ({}, {})
+
+
+def test_issue_24_repro_outer_ring_with_two_crossing_interior_walls():
+    """The issue's input at 5 mm/px: outer ring t=20 px, interior walls x=250 and y=200, t=12 px."""
+    ring = [(0, 0), (2500, 0), (2500, 2000), (0, 2000)]
+    walls = [(f"o{k}", ring[k], ring[(k + 1) % 4], 100) for k in range(4)]
+    walls += [("v", (1250, 0), (1250, 2000), 60), ("h", (0, 1000), (2500, 1000), 60)]
+    meshes = build_wall_meshes(_walls_plan(walls))
+    _, n = _counts(meshes, (-50, -50, 2550, 2050), step=10.0)
+    assert n.max() == 1  # no overlap anywhere
+    _, n = _counts(meshes, (1220, 970, 1280, 1030), step=3.0)
+    assert n.min() == 1  # the crossing is filled

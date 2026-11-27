@@ -7,6 +7,8 @@ Junctions (L/T/+ extend/trim, design.md §5) come from `junctions.wall_junctions
 solid runs from s = -ext_start to s = length + ext_end. Openings are clamped to the original
 centerline range (and to trimmed ends) and never cut into a junction's footprint
 (`junctions.wall_junctions` zones), so corners and branch roots stay solid.
+Walls crossing in the middle: the lower wall is left empty over the higher one's strip
+(`zones.cuts`, see `junctions.wall_crossings`).
 """
 
 from __future__ import annotations
@@ -51,13 +53,14 @@ def opening_spans(
     zones: list[tuple[float, float]] | None = None,
 ) -> list[tuple[float, float]]:
     """Wall-local intervals the opening really cuts: its span clamped to the original centerline
-    range (and trimmed ends), minus junction zones (where other walls rest on this one).
+    range (and trimmed ends), minus junction zones (where other walls rest on this one) and crossing
+    cuts.
     An opening lying entirely inside those limits is not cut at all (3D) / not drawn (DXF block
     stays empty): the Plan has no way to flag it."""
     lo, hi = max(0.0, -ext[0]), min(wall.length, wall.length + ext[1])
     a = min(max(opening.position - opening.width / 2, lo), hi)
     b = min(max(opening.position + opening.width / 2, lo), hi)
-    return _subtract(a, b, zones or [])
+    return _subtract(a, b, [*(zones or []), *getattr(zones, "cuts", [])])
 
 
 def wall_pieces(
@@ -69,12 +72,15 @@ def wall_pieces(
     length = wall.length
     lo, hi = -ext[0], length + ext[1]  # solid extent
     spans = [(a, b, o) for o in openings for a, b in opening_spans(wall, o, ext, zones)]
-    breaks = sorted({lo, hi} | {v for a, b, _ in spans for v in (a, b)})
+    gaps = getattr(zones, "cuts", [])
+    breaks = sorted({lo, hi} | {v for a, b, _ in spans for v in (a, b)} | {v for g in gaps for v in g if lo < v < hi})
     pieces = []
     for s0, s1 in zip(breaks, breaks[1:]):
         if s1 - s0 <= 1e-6:
             continue
         mid = (s0 + s1) / 2
+        if any(g0 < mid < g1 for g0, g1 in gaps):
+            continue  # filled by the crossing wall
         cuts = [(o.sill_height, o.sill_height + o.height) for a, b, o in spans if a < mid < b]
         pieces.extend(Piece(s0, s1, z0, z1) for z0, z1 in _subtract(0.0, wall.height, cuts))
     return pieces
