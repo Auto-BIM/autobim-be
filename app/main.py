@@ -11,7 +11,7 @@ from app.jobs.store import JobStore
 from app.models.registry import Models, build_models
 from app.schemas.jobs import HealthResponse
 
-API_VERSION = "0.2.0"
+API_VERSION = "0.3.0"
 
 
 def _model_name(models: Models, configured: ModelSettings) -> str:
@@ -31,7 +31,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="Auto-BIM API",
         version=API_VERSION,
-        description="2D floor plan (image/DXF) -> Plan -> 3D (.glb) / per-wall .dxf / JSON",
+        description="2D floor plan (image/DXF) -> Plan -> 3D (.glb) / per-wall .dxf / IFC / JSON",
     )
     if settings.cors.allow_origins:
         app.add_middleware(
