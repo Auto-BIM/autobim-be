@@ -27,7 +27,7 @@ from eval.pack import PackError, iter_samples, open_variant
 TYPES = ("door", "window")
 CSV_FIELDS = [
     "variant", "id", "status", "error_code", "wall_iou", "length_plan_px", "length_gt_px",
-    "length_error", "detections", "plan_openings",
+    "length_error", "detections", "plan_openings", "ignored_openings",
     *(f"{t}_{k}" for t in TYPES for k in ("tp", "fp", "fn")),
     "pos_err_px_mean", "width_err_px_mean", "review_items",
     *(f"review_{r.value}" for r in ReviewReason),
@@ -48,11 +48,12 @@ def _pack_call(fn, *args):
 def _row(variant, sample, model, gt_mask, gt_boxes, rec: RecognitionSettings) -> dict:
     row = {"variant": variant, "id": sample.id, "_pos": [], "_wid": [], "_types": {}}
     _pack_call(model.segment, sample.image)  # a broken pack file is a pack error, not a failed image
-    row["detections"] = len(_pack_call(model.detect, sample.image))
+    detections = _pack_call(model.detect, sample.image)
+    row["detections"] = len(detections)
     models = Models(model, model, NullDimensionReader())
     # A failed image still has ground-truth openings: they all count as missed (FN).
     missed = {t: (0, 0, sum(b.type.value == t for b in gt_boxes)) for t in TYPES}
-    failed = {**row, "status": "failed", "_types": missed}
+    failed = {**row, "status": "failed", "_types": missed, "_types_kept": missed}
     for t in TYPES:
         failed[f"{t}_tp"], failed[f"{t}_fp"], failed[f"{t}_fn"] = missed[t]
     try:
@@ -62,7 +63,19 @@ def _row(variant, sample, model, gt_mask, gt_boxes, rec: RecognitionSettings) ->
     except Exception as exc:  # noqa: BLE001 — same split as app/jobs/runner.py
         return {**failed, "error_code": f"internal_error:{type(exc).__name__}"}
     l_plan, l_gt, l_err = metrics.length_error(plan, gt_mask)
-    m = metrics.match_openings(gt_boxes, metrics.plan_openings_px(plan), estimate_thickness(gt_mask))
+    predicted, t_med = metrics.plan_openings_px(plan), estimate_thickness(gt_mask)
+    m = metrics.match_openings(gt_boxes, predicted, t_med)
+    kept = predicted
+    if sample.ignore is not None:  # Plan opening id "o<n>" comes from detection n-1
+        kept = [
+            p for p in predicted
+            if not metrics.mostly_ignored(detections[int(p.id[1:]) - 1], sample.ignore)
+        ]
+    m_kept = metrics.match_openings(gt_boxes, kept, t_med)
+
+    def counts(matching):
+        return {t: tuple(d.get(t, 0) for d in (matching.tp, matching.fp, matching.fn)) for t in TYPES}
+
     reasons = Counter(r.reason.value for r in plan.review_items)
     row.update(
         status="succeeded", error_code="",
@@ -73,7 +86,7 @@ def _row(variant, sample, model, gt_mask, gt_boxes, rec: RecognitionSettings) ->
         plan_openings=len(plan.openings), review_items=len(plan.review_items),
         pos_err_px_mean=_mean(m.pos_err), width_err_px_mean=_mean(m.width_err),
         _pos=m.pos_err, _wid=m.width_err,
-        _types={t: (m.tp.get(t, 0), m.fp.get(t, 0), m.fn.get(t, 0)) for t in TYPES},
+        _types=counts(m), _types_kept=counts(m_kept), ignored_openings=len(predicted) - len(kept),
     )
     for t in TYPES:
         for k, v in zip(("tp", "fp", "fn"), row["_types"][t]):
@@ -85,8 +98,9 @@ def _row(variant, sample, model, gt_mask, gt_boxes, rec: RecognitionSettings) ->
 
 def _aggregate(rows: list[dict]) -> dict:
     ok = [r for r in rows if r["status"] == "succeeded"]
-    def totals(rs):
-        sums = {t: [sum(r["_types"][t][i] for r in rs) for i in range(3)] for t in TYPES}
+
+    def totals(rs, key="_types"):
+        sums = {t: [sum(r[key][t][i] for r in rs) for i in range(3)] for t in TYPES}
         sums["all"] = [sum(sums[t][i] for t in TYPES) for i in range(3)]
         return {t: {"tp": s[0], "fp": s[1], "fn": s[2], **metrics.prf(*s)} for t, s in sums.items()}
 
@@ -103,6 +117,9 @@ def _aggregate(rows: list[dict]) -> dict:
         # default: failed images count their gt openings as FN; the second keeps only succeeded ones
         "openings": totals(rows),
         "openings_succeeded_only": totals(ok),
+        # same as "openings" without predictions whose box is mostly in the ignore area
+        "openings_ignore_excluded": totals(rows, "_types_kept"),
+        "ignored_openings": sum(r["ignored_openings"] for r in ok),
         "matched_pairs": len(pos),
         "position_error_px_median": statistics.median(pos) if pos else None,
         "width_error_px_median": statistics.median(wid) if wid else None,
@@ -131,7 +148,9 @@ def evaluate(
         "images": images,
         "units": "px",
         "notes": [
-            "wall IoU excludes ignore/gt (255) pixels when the pack has them; length and openings do not",
+            "wall IoU excludes ignore/gt (255) pixels when the pack has them; length error does not",
+            "openings counts every prediction; openings_ignore_excluded drops those whose detection "
+            "box is >= 50% ignore before matching",
             "opening ground truth = openings/gt boxes (same function as serving), not gt/<id>.json",
         ],
         "variants": {v: _aggregate(rs) for v, rs in by_variant.items()},

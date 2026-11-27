@@ -377,3 +377,30 @@ def test_ignore_mask_is_excluded_from_iou(tmp_path):
     after = run.evaluate(pack, ["pred/seg-v1"])[1]["variants"]["pred/seg-v1"]["wall_iou_mean"]
     assert before < 0.99 and after > before
     assert metrics.iou(np.ones((4, 4), bool), np.zeros((4, 4), bool), np.ones((4, 4), bool)) == 1.0
+
+
+def test_openings_in_the_ignore_area_are_reported_both_ways(tmp_path):
+    # pred has one extra door on the bottom wall, where the pack has no ground truth
+    extra_gap = (2, 80 - T, 80, 60, 80)
+    extra_box = {"type": "door", "bbox": [60, 74, 80, 82], "conf": 1.0}
+    pred = (_frame([DOOR_GAP, WINDOW_GAP, extra_gap]), [DOOR_BOX, WINDOW_BOX, extra_box])
+    pack = make_pack(tmp_path / "pack", {"gt": GT, "pred/seg-v1": pred}, n=1)
+    sha = json.loads((pack / "manifest.json").read_text())[0]["sha1"]
+    ignore = np.zeros((H, W), np.uint8)
+    ignore[70:90, 55:85] = 255
+    (pack / "ignore" / "gt").mkdir(parents=True)
+    Image.fromarray(ignore).save(pack / "ignore" / "gt" / f"{sha}.png")
+    rows, summary = run.evaluate(pack, ["pred/seg-v1"])
+    s = summary["variants"]["pred/seg-v1"]
+    assert (s["openings"]["all"]["tp"], s["openings"]["all"]["fp"]) == (2, 1)
+    kept = s["openings_ignore_excluded"]["all"]
+    assert (kept["tp"], kept["fp"], kept["fn"]) == (2, 0, 0)
+    assert s["ignored_openings"] == 1 and rows[0]["ignored_openings"] == 1
+
+
+def test_mostly_ignored_threshold_is_half_the_box():
+    ignore = np.zeros((20, 20), bool)
+    ignore[:, :10] = True
+    assert metrics.mostly_ignored(_box("door", 10, 10, 8, 4), ignore)  # exactly 50 %
+    assert not metrics.mostly_ignored(_box("door", 11, 10, 8, 4), ignore)  # 3 of 8 columns
+    assert not metrics.mostly_ignored(_box("door", 20, 10, 20, 4), ignore)  # off the ignored half

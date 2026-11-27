@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.models.base import OpeningDetection
-from app.recognition.topology import rasterize
+from app.recognition.topology import _span, rasterize
 from app.recognition.walls import PixelWall
 from app.schemas.plan import Plan, ReviewReason
 
@@ -74,6 +74,14 @@ def plan_openings_px(plan: Plan) -> list[PxOpening]:
             )
         )
     return out
+
+
+def mostly_ignored(det: OpeningDetection, ignore: np.ndarray) -> bool:
+    """At least half of the detection box has no ground truth (model repo MODEL_SPEC §8.1)."""
+    b = det.bbox
+    rows, cols = _span(b.y0, b.y1), _span(b.x0, b.x1)
+    area = (rows.stop - rows.start) * (cols.stop - cols.start)  # off-image pixels are not ignored
+    return bool(area) and ignore[rows, cols].sum() >= 0.5 * area
 
 
 def render_plan_walls(plan: Plan, shape: tuple[int, int]) -> np.ndarray:
