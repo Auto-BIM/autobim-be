@@ -14,6 +14,7 @@ dependencies = [
     "pillow>=10.0",
     "ezdxf>=1.2",
     "trimesh>=4.2",
+    "ifcopenshell>=0.8",
 ]
 
 [project.optional-dependencies]
